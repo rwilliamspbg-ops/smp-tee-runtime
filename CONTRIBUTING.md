@@ -5,6 +5,7 @@
 ```bash
 cargo fmt
 cargo test
+cargo test --examples
 cargo bench --bench aggregation
 ```
 
