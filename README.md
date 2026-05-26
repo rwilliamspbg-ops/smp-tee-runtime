@@ -25,7 +25,7 @@ Run the benchmark suite that tracks aggregation and ingress simulation cost:
 cargo bench --bench aggregation
 ```
 
-The benchmark results below were collected with `cargo bench --bench aggregation` on the current stable Rust toolchain (`stable-x86_64-unknown-linux-gnu`, `rustc 1.95.0`).
+If you need to refresh the performance chart, rerun `cargo bench --bench aggregation` and update the table below with the new measurements.
 
 ## Repository layout
 
@@ -63,19 +63,15 @@ smp-tee-runtime/
 
 ## Performance Tracking
 
-The table below records the current Criterion results for the shipped benchmark target. Re-run `cargo bench --bench aggregation` after performance-sensitive changes and update the values, along with the toolchain note above.
+The table below records the current Criterion results for the shipped benchmark target.
+
+Collected on `stable-x86_64-unknown-linux-gnu` with `rustc 1.95.0` using `cargo bench --bench aggregation`.
 
 | Benchmark | Current result | What it measures |
 | --- | --- | --- |
 | `federated_averaging` | 35.325 ns to 36.458 ns | Mean aggregation over a small in-memory batch |
 | `multi_krum` | 3.5111 ns to 3.6398 ns | Robust aggregation selection for a small candidate set |
 | `simulated_packet_pointer_pass_1m` | 630.24 µs to 644.61 µs | Pointer-passing overhead for a 1M-packet ingress simulation |
-
-The current benchmark run also produced the following collection targets:
-
-- `federated_averaging`: `cargo bench --bench aggregation`
-- `multi_krum`: `cargo bench --bench aggregation`
-- `simulated_packet_pointer_pass_1m`: `cargo bench --bench aggregation`
 
 ## Example end-to-end flow
 
@@ -99,11 +95,11 @@ let left = tee.allocate_memory(8).expect("left allocation failed");
 let right = tee.allocate_memory(8).expect("right allocation failed");
 
 let _result = tee
-	.execute_computation(
-		&[left.cast_const(), right.cast_const()],
-		&ComputationParams {
-			algorithm: AggregationAlgorithm::FederatedAveraging,
-		},
-	)
-	.expect("aggregation failed");
+    .execute_computation(
+        &[left.cast_const(), right.cast_const()],
+        &ComputationParams {
+            algorithm: AggregationAlgorithm::FederatedAveraging,
+        },
+    )
+    .expect("aggregation failed");
 ```

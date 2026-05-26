@@ -1,6 +1,6 @@
 # build-scripts
 
-Placeholder directory for target-specific helper scripts (e.g., SGX/TDX toolchain wrappers, SNP VM bootstrap scripts). It is intentionally empty in the current repo state.
+Placeholder directory for target-specific helper scripts (e.g., SGX/TDX toolchain wrappers, SNP VM bootstrap scripts). It is intentionally empty in the current repo state, so there is no active helper script workflow yet.
 
 For local development and runtime usage, see [README.md](../README.md).
 

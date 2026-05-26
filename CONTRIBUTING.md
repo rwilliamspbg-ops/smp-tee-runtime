@@ -9,6 +9,8 @@ cargo test --examples
 cargo bench --bench aggregation
 ```
 
+Update the benchmark table in [README.md](README.md) only when the results meaningfully change, so the docs stay useful instead of noisy.
+
 ## Documentation updates
 
 - Update [README.md](README.md) when the public usage flow changes.
