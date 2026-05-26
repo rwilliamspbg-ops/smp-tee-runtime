@@ -6,6 +6,8 @@
 cargo fmt
 cargo test
 cargo test --examples
+cargo run --example basic_tee_call
+cargo run --example xdp_integration
 cargo bench --bench aggregation
 ```
 
