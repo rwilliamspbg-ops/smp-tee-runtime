@@ -16,7 +16,7 @@ pub struct ComputationParams {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TeeError {
     NotInitialized,
-    AllocationTooLarge,
+    InvalidAllocationSize,
     InvalidPointer,
     InvalidInput(&'static str),
 }
@@ -75,7 +75,7 @@ impl TeeGuard for InMemoryTee {
             return Err(TeeError::NotInitialized);
         }
         if size == 0 {
-            return Err(TeeError::AllocationTooLarge);
+            return Err(TeeError::InvalidAllocationSize);
         }
 
         let mut allocation = vec![0_u8; size];
@@ -95,7 +95,7 @@ impl TeeGuard for InMemoryTee {
             .ok_or(TeeError::InvalidPointer)?;
 
         if data.len() > buffer.len() {
-            return Err(TeeError::AllocationTooLarge);
+            return Err(TeeError::InvalidAllocationSize);
         }
 
         buffer[..data.len()].copy_from_slice(data);
