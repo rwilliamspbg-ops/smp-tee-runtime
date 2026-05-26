@@ -9,7 +9,7 @@ cargo test --examples
 cargo bench --bench aggregation
 ```
 
-Update the benchmark table in [README.md](README.md) only when the results meaningfully change, so the docs stay useful instead of noisy.
+Update the benchmark table in [README.md](README.md) only when the results meaningfully change beyond normal Criterion variance, so the docs stay useful instead of noisy.
 
 ## Documentation updates
 
