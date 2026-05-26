@@ -1,0 +1,16 @@
+[package]
+name = "smp-tee-runtime"
+version = "0.1.0"
+edition = "2021"
+description = "Hardened minimal runtime for TEE-based federated aggregation"
+license = "MIT"
+
+[dependencies]
+rand = "0.8"
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "aggregation"
+harness = false
