@@ -4,7 +4,11 @@ use smp_tee_runtime::{
 };
 
 fn encode_f32(values: &[f32]) -> Vec<u8> {
-    values.flat_map(|value| value.to_le_bytes()).collect()
+    values
+        .iter()
+        .copied()
+        .flat_map(|value| value.to_le_bytes())
+        .collect()
 }
 
 fn decode_f32(bytes: &[u8]) -> Vec<f32> {
