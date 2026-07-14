@@ -24,11 +24,21 @@ fn benchmark_multi_krum(c: &mut Criterion) {
     c.bench_function("multi_krum", |b| {
         b.iter(|| multi_krum(black_box(&input), black_box(1)))
     });
+
+    // A larger, more realistic benchmark for multi_krum
+    let mut large_input = Vec::new();
+    for i in 0..50 {
+        large_input.push(vec![i as f32; 128]);
+    }
+
+    c.bench_function("multi_krum_large_50_clients", |b| {
+        b.iter(|| multi_krum(black_box(&large_input), black_box(10)))
+    });
 }
 
 fn benchmark_packet_flow_simulation(c: &mut Criterion) {
     let packets = 1_000_000usize;
-    let payload = vec![1_u8; 64];
+    let payload = [1_u8; 64];
 
     c.bench_function("simulated_packet_pointer_pass_1m", |b| {
         b.iter(|| {
