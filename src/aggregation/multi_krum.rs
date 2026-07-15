@@ -1,17 +1,20 @@
+#[inline(always)]
 fn squared_l2_distance(left: &[f32], right: &[f32]) -> Option<f32> {
     if left.len() != right.len() {
         return None;
     }
 
-    Some(
-        left.iter()
-            .zip(right.iter())
-            .map(|(l, r)| {
-                let delta = l - r;
-                delta * delta
-            })
-            .sum(),
-    )
+    // Explicit slice length assertion to help compiler with loop unrolling and auto-vectorization
+    let len = left.len();
+    let left = &left[..len];
+    let right = &right[..len];
+
+    let mut sum = 0.0_f32;
+    for i in 0..len {
+        let delta = left[i] - right[i];
+        sum += delta * delta;
+    }
+    Some(sum)
 }
 
 pub fn multi_krum(vectors: &[Vec<f32>], byzantine_tolerance: usize) -> Option<Vec<f32>> {
@@ -38,13 +41,13 @@ pub fn multi_krum(vectors: &[Vec<f32>], byzantine_tolerance: usize) -> Option<Ve
 
     let mut best: Option<(usize, f32)> = None;
 
+    // Reuse a single pre-allocated distances buffer to avoid repeated vector allocations inside the loop
+    let mut distances = vec![0.0_f32; n - 1];
+
     for i in 0..n {
-        let mut distances = Vec::with_capacity(n - 1);
-        for j in 0..n {
-            if i != j {
-                distances.push(distance_matrix[i * n + j]);
-            }
-        }
+        let row_start = i * n;
+        distances[..i].copy_from_slice(&distance_matrix[row_start..(row_start + i)]);
+        distances[i..].copy_from_slice(&distance_matrix[(row_start + i + 1)..(row_start + n)]);
 
         // Use select_nth_unstable_by to partition the vector in O(N) time
         // so the `neighbors` smallest distances are at indices 0..neighbors.
