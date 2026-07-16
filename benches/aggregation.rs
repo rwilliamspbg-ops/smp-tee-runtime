@@ -1,5 +1,15 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use smp_tee_runtime::{federated_averaging, multi_krum};
+use smp_tee_runtime::{federated_averaging, multi_krum, XdpIngress};
+
+fn benchmark_ring_buffer_parsing(c: &mut Criterion) {
+    let size = 65536; // 64KB
+    let ring_buffer = vec![0_u8; size];
+    let frame_size = 64;
+
+    c.bench_function("parse_ring_buffer_64kb", |b| {
+        b.iter(|| XdpIngress::parse_ring_buffer(black_box(&ring_buffer), black_box(frame_size)))
+    });
+}
 
 fn benchmark_fedavg(c: &mut Criterion) {
     let input = vec![
@@ -53,6 +63,7 @@ fn benchmark_packet_flow_simulation(c: &mut Criterion) {
 
 criterion_group!(
     benches,
+    benchmark_ring_buffer_parsing,
     benchmark_fedavg,
     benchmark_multi_krum,
     benchmark_packet_flow_simulation
