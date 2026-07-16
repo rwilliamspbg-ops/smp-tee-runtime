@@ -14,9 +14,12 @@ impl XdpIngress {
             return Vec::new();
         }
 
+        // Optimized: Removed redundant `.filter(|frame| !frame.is_empty())` check.
+        // `chunks(frame_size)` with `frame_size > 0` never yields empty slices.
+        // Removing the filter preserves the `ExactSizeIterator` trait, enabling `collect()`
+        // to pre-allocate the exact vector capacity in memory and avoid repeated reallocations.
         ring_bytes
             .chunks(frame_size)
-            .filter(|frame| !frame.is_empty())
             .map(|frame| PacketView { data: frame })
             .collect()
     }
