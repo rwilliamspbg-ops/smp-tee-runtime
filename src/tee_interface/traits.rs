@@ -50,17 +50,23 @@ impl InMemoryTee {
             ));
         }
 
-        Ok(bytes
-            .chunks_exact(4)
-            .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
-            .collect())
+        // Optimized: pre-allocate exact capacity and read f32 values from raw bytes
+        // to avoid expensive chunking, map overhead, and allocation resizing.
+        let mut values = vec![0.0_f32; bytes.len() / 4];
+        for (i, chunk) in bytes.chunks_exact(4).enumerate() {
+            values[i] = f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+        }
+        Ok(values)
     }
 
     fn encode_vector(values: &[f32]) -> Vec<u8> {
-        values
-            .iter()
-            .flat_map(|value| value.to_le_bytes())
-            .collect::<Vec<u8>>()
+        // Optimized: pre-allocate exact capacity and convert each f32 value
+        // directly into the byte slice instead of flat_map iterators.
+        let mut bytes = vec![0_u8; values.len() * 4];
+        for (i, value) in values.iter().enumerate() {
+            bytes[i * 4..(i + 1) * 4].copy_from_slice(&value.to_le_bytes());
+        }
+        bytes
     }
 }
 
