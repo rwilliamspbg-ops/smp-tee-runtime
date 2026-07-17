@@ -23,6 +23,42 @@ fn benchmark_fedavg(c: &mut Criterion) {
     });
 }
 
+fn benchmark_fedavg_large(c: &mut Criterion) {
+    let mut large_input = Vec::new();
+    for i in 0..50 {
+        large_input.push(vec![i as f32; 10000]);
+    }
+
+    c.bench_function("federated_averaging_large_50_clients", |b| {
+        b.iter(|| federated_averaging(black_box(&large_input)))
+    });
+}
+
+fn benchmark_tee_encode_decode(c: &mut Criterion) {
+    use smp_tee_runtime::{AggregationAlgorithm, ComputationParams, InMemoryTee, TeeGuard};
+
+    let mut tee = InMemoryTee::default();
+    tee.initialize().unwrap();
+
+    let size = 10000 * 4; // 10000 f32s
+    let p1 = tee.allocate_memory(size).unwrap();
+    let data = vec![1.23_f32; 10000];
+    let bytes: Vec<u8> = data.iter().flat_map(|v| v.to_le_bytes()).collect();
+    tee.write_data(p1, &bytes).unwrap();
+
+    c.bench_function("tee_execute_computation", |b| {
+        b.iter(|| {
+            tee.execute_computation(
+                black_box(&[p1.cast_const()]),
+                black_box(&ComputationParams {
+                    algorithm: AggregationAlgorithm::FederatedAveraging,
+                }),
+            )
+            .unwrap()
+        })
+    });
+}
+
 fn benchmark_multi_krum(c: &mut Criterion) {
     let input = vec![
         vec![1.0_f32, 2.0, 3.0, 4.0],
@@ -65,6 +101,8 @@ criterion_group!(
     benches,
     benchmark_ring_buffer_parsing,
     benchmark_fedavg,
+    benchmark_fedavg_large,
+    benchmark_tee_encode_decode,
     benchmark_multi_krum,
     benchmark_packet_flow_simulation
 );
