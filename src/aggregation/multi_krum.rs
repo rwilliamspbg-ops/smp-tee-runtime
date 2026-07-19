@@ -9,11 +9,36 @@ fn squared_l2_distance(left: &[f32], right: &[f32]) -> Option<f32> {
     let left = &left[..len];
     let right = &right[..len];
 
-    let mut sum = 0.0_f32;
-    for i in 0..len {
+    // Optimized: Manual loop unrolling by 4 with independent accumulators.
+    // This reduces data dependency latency (by avoiding immediate dependencies on `sum`)
+    // and maximizes instruction-level parallelism (ILP) during distance calculations.
+    let mut sum0 = 0.0_f32;
+    let mut sum1 = 0.0_f32;
+    let mut sum2 = 0.0_f32;
+    let mut sum3 = 0.0_f32;
+
+    let chunks = len / 4;
+    for i in 0..chunks {
+        let idx = i * 4;
+        let d0 = left[idx] - right[idx];
+        let d1 = left[idx + 1] - right[idx + 1];
+        let d2 = left[idx + 2] - right[idx + 2];
+        let d3 = left[idx + 3] - right[idx + 3];
+
+        sum0 += d0 * d0;
+        sum1 += d1 * d1;
+        sum2 += d2 * d2;
+        sum3 += d3 * d3;
+    }
+
+    let mut sum = sum0 + sum1 + sum2 + sum3;
+
+    // Handle any remaining elements when length is not a multiple of 4
+    for i in (chunks * 4)..len {
         let delta = left[i] - right[i];
         sum += delta * delta;
     }
+
     Some(sum)
 }
 
