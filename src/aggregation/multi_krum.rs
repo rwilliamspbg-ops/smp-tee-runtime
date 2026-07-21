@@ -4,26 +4,26 @@ fn squared_l2_distance(left: &[f32], right: &[f32]) -> Option<f32> {
         return None;
     }
 
-    // Explicit slice length assertion to help compiler with loop unrolling and auto-vectorization
-    let len = left.len();
-    let left = &left[..len];
-    let right = &right[..len];
-
-    // Optimized: Manual loop unrolling by 4 with independent accumulators.
-    // This reduces data dependency latency (by avoiding immediate dependencies on `sum`)
-    // and maximizes instruction-level parallelism (ILP) during distance calculations.
+    // Optimized: Manual loop unrolling by 4 with independent accumulators
+    // zipped with `chunks_exact(4)` and cast to fixed-size array references.
+    // This completely eliminates bounds checks, reduces data dependency latency
+    // (by avoiding immediate dependencies on `sum`), and maximizes instruction-level parallelism (ILP).
     let mut sum0 = 0.0_f32;
     let mut sum1 = 0.0_f32;
     let mut sum2 = 0.0_f32;
     let mut sum3 = 0.0_f32;
 
-    let chunks = len / 4;
-    for i in 0..chunks {
-        let idx = i * 4;
-        let d0 = left[idx] - right[idx];
-        let d1 = left[idx + 1] - right[idx + 1];
-        let d2 = left[idx + 2] - right[idx + 2];
-        let d3 = left[idx + 3] - right[idx + 3];
+    let mut left_chunks = left.chunks_exact(4);
+    let mut right_chunks = right.chunks_exact(4);
+
+    for (cl, cr) in left_chunks.by_ref().zip(right_chunks.by_ref()) {
+        let cl: &[f32; 4] = cl.try_into().unwrap();
+        let cr: &[f32; 4] = cr.try_into().unwrap();
+
+        let d0 = cl[0] - cr[0];
+        let d1 = cl[1] - cr[1];
+        let d2 = cl[2] - cr[2];
+        let d3 = cl[3] - cr[3];
 
         sum0 += d0 * d0;
         sum1 += d1 * d1;
@@ -34,8 +34,10 @@ fn squared_l2_distance(left: &[f32], right: &[f32]) -> Option<f32> {
     let mut sum = sum0 + sum1 + sum2 + sum3;
 
     // Handle any remaining elements when length is not a multiple of 4
-    for i in (chunks * 4)..len {
-        let delta = left[i] - right[i];
+    let rem_l = left_chunks.remainder();
+    let rem_r = right_chunks.remainder();
+    for (l, r) in rem_l.iter().zip(rem_r.iter()) {
+        let delta = l - r;
         sum += delta * delta;
     }
 
