@@ -14,14 +14,26 @@ impl XdpIngress {
             return Vec::new();
         }
 
-        // Optimized: Removed redundant `.filter(|frame| !frame.is_empty())` check.
-        // `chunks(frame_size)` with `frame_size > 0` never yields empty slices.
-        // Removing the filter preserves the `ExactSizeIterator` trait, enabling `collect()`
-        // to pre-allocate the exact vector capacity in memory and avoid repeated reallocations.
-        ring_bytes
-            .chunks(frame_size)
-            .map(|frame| PacketView { data: frame })
-            .collect()
+        // Optimized: Use `chunks_exact` to process uniform-sized frames extremely fast,
+        // and pre-allocate the exact capacity needed (with/without the remainder).
+        // This avoids any extra reallocations and enables compiler optimizations on chunks.
+        let chunks_exact = ring_bytes.chunks_exact(frame_size);
+        let remainder = chunks_exact.remainder();
+        let num_chunks = chunks_exact.len();
+        let capacity = if remainder.is_empty() {
+            num_chunks
+        } else {
+            num_chunks + 1
+        };
+
+        let mut packets = Vec::with_capacity(capacity);
+        for chunk in chunks_exact {
+            packets.push(PacketView { data: chunk });
+        }
+        if !remainder.is_empty() {
+            packets.push(PacketView { data: remainder });
+        }
+        packets
     }
 
     pub fn write_packet_into_tee<T: TeeGuard>(
