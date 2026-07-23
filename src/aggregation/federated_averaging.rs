@@ -10,8 +10,11 @@ pub fn federated_averaging(vectors: &[Vec<f32>]) -> Option<Vec<f32>> {
 
     if len <= 1024 {
         // Fast path for small dimensions: direct iteration to avoid chunking and branch overhead
+        // Assert slice lengths to completely eliminate runtime bounds checks and enable full auto-vectorization.
+        assert_eq!(acc_slice.len(), len);
         for vector in vectors {
             let vector_slice = &vector[..len];
+            assert_eq!(vector_slice.len(), len);
             for i in 0..len {
                 acc_slice[i] += vector_slice[i];
             }
@@ -28,8 +31,10 @@ pub fn federated_averaging(vectors: &[Vec<f32>]) -> Option<Vec<f32>> {
             };
             let chunk_len = chunk_end - chunk_start;
             let acc_chunk = &mut acc_slice[chunk_start..chunk_end];
+            assert_eq!(acc_chunk.len(), chunk_len);
             for vector in vectors {
                 let vector_chunk = &vector[chunk_start..chunk_end];
+                assert_eq!(vector_chunk.len(), chunk_len);
                 for i in 0..chunk_len {
                     acc_chunk[i] += vector_chunk[i];
                 }
