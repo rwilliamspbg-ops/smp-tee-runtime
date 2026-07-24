@@ -68,19 +68,23 @@ pub fn multi_krum(vectors: &[Vec<f32>], byzantine_tolerance: usize) -> Option<Ve
 
     let mut best: Option<(usize, f32)> = None;
 
-    // Reuse a single pre-allocated distances buffer to avoid repeated vector allocations inside the loop
-    let mut distances = vec![0.0_f32; n - 1];
-
+    // Optimized: Mutate rows of `distance_matrix` in-place during the selection loop.
+    // Since row `i` is never accessed in any subsequent iterations or outside this loop,
+    // we can run `select_nth_unstable_by` directly on `distance_matrix[row_start..row_end]`.
+    // This completely eliminates any helper vectors or temporary heap allocations,
+    // and avoids ALL `copy_from_slice` overhead.
+    // Note that the self-distance is 0.0, which is always the minimum possible squared distance, so the sum of the
+    // `neighbors + 1` smallest distances including itself is mathematically identical to the sum of the
+    // `neighbors` smallest distances excluding itself.
     for i in 0..n {
         let row_start = i * n;
-        distances[..i].copy_from_slice(&distance_matrix[row_start..(row_start + i)]);
-        distances[i..].copy_from_slice(&distance_matrix[(row_start + i + 1)..(row_start + n)]);
+        let row = &mut distance_matrix[row_start..(row_start + n)];
 
-        // Use select_nth_unstable_by to partition the vector in O(N) time
-        // so the `neighbors` smallest distances are at indices 0..neighbors.
+        // Use select_nth_unstable_by to partition the vector in O(N) time.
+        // We select the `neighbors + 1` smallest elements (index `neighbors` in 0-indexed terms).
         let score: f32 = if neighbors > 0 {
-            distances.select_nth_unstable_by(neighbors - 1, |a, b| a.total_cmp(b));
-            distances[..neighbors].iter().sum()
+            row.select_nth_unstable_by(neighbors, |a, b| a.total_cmp(b));
+            row[..=neighbors].iter().sum()
         } else {
             0.0
         };
