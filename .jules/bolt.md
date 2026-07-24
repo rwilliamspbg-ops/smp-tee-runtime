@@ -2,6 +2,10 @@
 
 ⚡ Performance-obsessed optimizations, learnings, and insights.
 
+## 2026-06-03 - [In-Place Distance Matrix Partitioning for Multi-Krum Selection]
+**Learning:** In candidate-selection algorithms like Multi-Krum, scores are computed based on the sum of the $K$ smallest distances to other candidates. While we precompute the symmetric distance matrix to reduce distance calculation, copying each row into a temporary helper buffer to exclude the 0.0 self-distance is highly redundant. Because the self-distance of any vector is always 0.0 (the mathematical minimum), including it and selecting the $K+1$ smallest elements yields the exact same sum. This allows running `select_nth_unstable_by` directly on the row slices of the `distance_matrix` in-place, completely eliminating all auxiliary vectors, heap allocations, and memory copies (`copy_from_slice`) in the hot loop.
+**Action:** Look for opportunities to perform partition-based selections directly in-place on precomputed matrix slices, utilizing mathematical identity elements (like 0.0 distance under addition) to safely bypass array slicing or element exclusion.
+
 ## 2026-05-26 - [Symmetric Multi-Krum Selection Optimization]
 **Learning:** For peer-to-peer or distance-based aggregation algorithms like Multi-Krum, computing L2 distance between all candidates can be incredibly expensive. Since squared L2 distance is symmetric, precomputing a 1D or 2D matrix reduces distance computations by exactly 50%. Additionally, a full sort is unnecessary when we only need the sum of the smallest $K$ elements. Using standard library selection partitioning (e.g., `select_nth_unstable_by`) avoids the $O(N \log N)$ cost of sorting the distances.
 **Action:** Always check if pairwise calculations in vector aggregation can be computed symmetrically, and favor selection partitioning over complete sorting when only top/bottom elements are desired.
