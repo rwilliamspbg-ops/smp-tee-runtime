@@ -50,25 +50,61 @@ impl InMemoryTee {
             ));
         }
 
-        // Optimized: Parse f32 values directly from the byte slice by using `chunks_exact(4)`
-        // and collecting into a Vec. Since `chunks_exact` implements `ExactSizeIterator`,
-        // `collect()` will pre-allocate the exact capacity needed, avoiding the redundant
-        // zero-initialization of memory from `vec![0.0_f32; len]` and any extra reallocations.
-        let values: Vec<f32> = bytes
-            .chunks_exact(4)
-            .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
-            .collect();
-        Ok(values)
+        #[cfg(target_endian = "little")]
+        {
+            // Optimized: On little-endian architectures, copy the byte slice directly
+            // into a pre-allocated but uninitialized float vector via `copy_nonoverlapping`.
+            // This avoids any loop/element-wise overhead and completely bypasses bounds checks.
+            let float_len = bytes.len() / 4;
+            let mut values = Vec::with_capacity(float_len);
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    bytes.as_ptr(),
+                    values.as_mut_ptr() as *mut u8,
+                    bytes.len(),
+                );
+                values.set_len(float_len);
+            }
+            Ok(values)
+        }
+
+        #[cfg(not(target_endian = "little"))]
+        {
+            let values: Vec<f32> = bytes
+                .chunks_exact(4)
+                .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
+                .collect();
+            Ok(values)
+        }
     }
 
     fn encode_vector(values: &[f32]) -> Vec<u8> {
-        // Optimized: pre-allocate exact capacity and convert each f32 value
-        // directly into the byte slice by zipping with `chunks_exact_mut(4)` to avoid index bounds checking.
-        let mut bytes = vec![0_u8; values.len() * 4];
-        for (value, chunk) in values.iter().zip(bytes.chunks_exact_mut(4)) {
-            chunk.copy_from_slice(&value.to_le_bytes());
+        #[cfg(target_endian = "little")]
+        {
+            // Optimized: On little-endian architectures, copy the float slice directly
+            // into a pre-allocated but uninitialized byte vector via `copy_nonoverlapping`.
+            // This avoids any loop/element-wise overhead and completely bypasses bounds checks.
+            let byte_len = values.len() * 4;
+            let mut bytes = Vec::with_capacity(byte_len);
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    values.as_ptr() as *const u8,
+                    bytes.as_mut_ptr(),
+                    byte_len,
+                );
+                bytes.set_len(byte_len);
+            }
+            bytes
         }
-        bytes
+
+        #[cfg(not(target_endian = "little"))]
+        {
+            let mut bytes = vec![0_u8; values.len() * 4];
+            for (value, chunk) in values.iter().zip(bytes.chunks_exact_mut(4)) {
+                chunk.copy_from_slice(&value.to_le_bytes());
+            }
+            bytes
+        }
     }
 }
 
