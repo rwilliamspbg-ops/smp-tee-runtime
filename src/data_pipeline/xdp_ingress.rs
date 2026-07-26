@@ -27,9 +27,7 @@ impl XdpIngress {
         };
 
         let mut packets = Vec::with_capacity(capacity);
-        for chunk in chunks_exact {
-            packets.push(PacketView { data: chunk });
-        }
+        packets.extend(chunks_exact.map(|chunk| PacketView { data: chunk }));
         if !remainder.is_empty() {
             packets.push(PacketView { data: remainder });
         }
