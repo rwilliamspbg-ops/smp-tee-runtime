@@ -4,19 +4,55 @@ fn squared_l2_distance(left: &[f32], right: &[f32]) -> Option<f32> {
         return None;
     }
 
-    // Optimized: Manual loop unrolling by 4 with independent accumulators
-    // zipped with `chunks_exact(4)` and cast to fixed-size array references.
+    // Optimized: Manual loop unrolling by 8 with independent accumulators
+    // zipped with `chunks_exact(8)` and cast to fixed-size array references.
     // This completely eliminates bounds checks, reduces data dependency latency
     // (by avoiding immediate dependencies on `sum`), and maximizes instruction-level parallelism (ILP).
     let mut sum0 = 0.0_f32;
     let mut sum1 = 0.0_f32;
     let mut sum2 = 0.0_f32;
     let mut sum3 = 0.0_f32;
+    let mut sum4 = 0.0_f32;
+    let mut sum5 = 0.0_f32;
+    let mut sum6 = 0.0_f32;
+    let mut sum7 = 0.0_f32;
 
-    let mut left_chunks = left.chunks_exact(4);
-    let mut right_chunks = right.chunks_exact(4);
+    let mut left_chunks = left.chunks_exact(8);
+    let mut right_chunks = right.chunks_exact(8);
 
     for (cl, cr) in left_chunks.by_ref().zip(right_chunks.by_ref()) {
+        let cl: &[f32; 8] = cl.try_into().unwrap();
+        let cr: &[f32; 8] = cr.try_into().unwrap();
+
+        let d0 = cl[0] - cr[0];
+        let d1 = cl[1] - cr[1];
+        let d2 = cl[2] - cr[2];
+        let d3 = cl[3] - cr[3];
+        let d4 = cl[4] - cr[4];
+        let d5 = cl[5] - cr[5];
+        let d6 = cl[6] - cr[6];
+        let d7 = cl[7] - cr[7];
+
+        sum0 += d0 * d0;
+        sum1 += d1 * d1;
+        sum2 += d2 * d2;
+        sum3 += d3 * d3;
+        sum4 += d4 * d4;
+        sum5 += d5 * d5;
+        sum6 += d6 * d6;
+        sum7 += d7 * d7;
+    }
+
+    let mut sum = sum0 + sum1 + sum2 + sum3 + sum4 + sum5 + sum6 + sum7;
+
+    // Handle any remaining elements when length is not a multiple of 8
+    let rem_l = left_chunks.remainder();
+    let rem_r = right_chunks.remainder();
+
+    let mut rem_l_chunks = rem_l.chunks_exact(4);
+    let mut rem_r_chunks = rem_r.chunks_exact(4);
+
+    if let Some((cl, cr)) = rem_l_chunks.by_ref().zip(rem_r_chunks.by_ref()).next() {
         let cl: &[f32; 4] = cl.try_into().unwrap();
         let cr: &[f32; 4] = cr.try_into().unwrap();
 
@@ -25,18 +61,12 @@ fn squared_l2_distance(left: &[f32], right: &[f32]) -> Option<f32> {
         let d2 = cl[2] - cr[2];
         let d3 = cl[3] - cr[3];
 
-        sum0 += d0 * d0;
-        sum1 += d1 * d1;
-        sum2 += d2 * d2;
-        sum3 += d3 * d3;
+        sum += d0 * d0 + d1 * d1 + d2 * d2 + d3 * d3;
     }
 
-    let mut sum = sum0 + sum1 + sum2 + sum3;
-
-    // Handle any remaining elements when length is not a multiple of 4
-    let rem_l = left_chunks.remainder();
-    let rem_r = right_chunks.remainder();
-    for (l, r) in rem_l.iter().zip(rem_r.iter()) {
+    let rem2_l = rem_l_chunks.remainder();
+    let rem2_r = rem_r_chunks.remainder();
+    for (l, r) in rem2_l.iter().zip(rem2_r.iter()) {
         let delta = l - r;
         sum += delta * delta;
     }
