@@ -4,15 +4,19 @@ pub fn federated_averaging(vectors: &[Vec<f32>]) -> Option<Vec<f32>> {
         return None;
     }
 
-    let mut acc = vec![0.0_f32; dimension];
+    // Optimized: Initialize `acc` directly with a cloned copy of the first vector
+    // rather than allocating a zero-filled vector and performing redundant addition in the first iteration.
+    let mut acc = vectors[0].clone();
     let len = dimension;
     let acc_slice = &mut acc[..len];
+
+    let remaining_vectors = &vectors[1..];
 
     if len <= 1024 {
         // Fast path for small dimensions: direct iteration to avoid chunking and branch overhead
         // Assert slice lengths to completely eliminate runtime bounds checks and enable full auto-vectorization.
         assert_eq!(acc_slice.len(), len);
-        for vector in vectors {
+        for vector in remaining_vectors {
             let vector_slice = &vector[..len];
             assert_eq!(vector_slice.len(), len);
             for i in 0..len {
@@ -32,7 +36,7 @@ pub fn federated_averaging(vectors: &[Vec<f32>]) -> Option<Vec<f32>> {
             let chunk_len = chunk_end - chunk_start;
             let acc_chunk = &mut acc_slice[chunk_start..chunk_end];
             assert_eq!(acc_chunk.len(), chunk_len);
-            for vector in vectors {
+            for vector in remaining_vectors {
                 let vector_chunk = &vector[chunk_start..chunk_end];
                 assert_eq!(vector_chunk.len(), chunk_len);
                 for i in 0..chunk_len {
