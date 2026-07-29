@@ -4,6 +4,12 @@ pub fn federated_averaging(vectors: &[Vec<f32>]) -> Option<Vec<f32>> {
         return None;
     }
 
+    // Optimized: If there is only one client vector to average, we can return a cloned copy of it immediately.
+    // This completely bypasses any addition loops, bounds-check/assertion logic, and division/normalization multiplication.
+    if vectors.len() == 1 {
+        return Some(vectors[0].clone());
+    }
+
     // Optimized: Initialize `acc` directly with a cloned copy of the first vector
     // rather than allocating a zero-filled vector and performing redundant addition in the first iteration.
     let mut acc = vectors[0].clone();
