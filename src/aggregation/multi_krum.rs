@@ -49,12 +49,9 @@ fn squared_l2_distance(left: &[f32], right: &[f32]) -> Option<f32> {
     let rem_l = left_chunks.remainder();
     let rem_r = right_chunks.remainder();
 
-    let mut rem_l_chunks = rem_l.chunks_exact(4);
-    let mut rem_r_chunks = rem_r.chunks_exact(4);
-
-    if let Some((cl, cr)) = rem_l_chunks.by_ref().zip(rem_r_chunks.by_ref()).next() {
-        let cl: &[f32; 4] = cl.try_into().unwrap();
-        let cr: &[f32; 4] = cr.try_into().unwrap();
+    let rem2_l = if rem_l.len() >= 4 {
+        let cl: &[f32; 4] = rem_l[..4].try_into().unwrap();
+        let cr: &[f32; 4] = rem_r[..4].try_into().unwrap();
 
         let d0 = cl[0] - cr[0];
         let d1 = cl[1] - cr[1];
@@ -62,10 +59,13 @@ fn squared_l2_distance(left: &[f32], right: &[f32]) -> Option<f32> {
         let d3 = cl[3] - cr[3];
 
         sum += d0 * d0 + d1 * d1 + d2 * d2 + d3 * d3;
-    }
+        &rem_l[4..]
+    } else {
+        rem_l
+    };
 
-    let rem2_l = rem_l_chunks.remainder();
-    let rem2_r = rem_r_chunks.remainder();
+    let rem2_r = if rem_r.len() >= 4 { &rem_r[4..] } else { rem_r };
+
     for (l, r) in rem2_l.iter().zip(rem2_r.iter()) {
         let delta = l - r;
         sum += delta * delta;
@@ -89,8 +89,10 @@ pub fn multi_krum(vectors: &[Vec<f32>], byzantine_tolerance: usize) -> Option<Ve
     // Precompute symmetric pairwise distances to reduce distance calculation count by 50%
     let mut distance_matrix = vec![0.0_f32; n * n];
     for i in 0..n {
-        for j in (i + 1)..n {
-            let dist = squared_l2_distance(&vectors[i], &vectors[j])?;
+        let v_i = &vectors[i];
+        for (idx, v_j) in vectors[(i + 1)..n].iter().enumerate() {
+            let j = i + 1 + idx;
+            let dist = squared_l2_distance(v_i, v_j)?;
             distance_matrix[i * n + j] = dist;
             distance_matrix[j * n + i] = dist;
         }

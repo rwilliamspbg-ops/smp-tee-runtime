@@ -2,6 +2,10 @@
 
 ⚡ Performance-obsessed optimizations, learnings, and insights.
 
+## 2026-06-08 - [Symmetric Pairwise Nested Loop and Remainder Slicing Optimization]
+**Learning:** In symmetric pairwise calculations (e.g., computing a distance matrix in Multi-Krum), nesting index-based lookups like `&vectors[i]` and `&vectors[j]` introduces redundant bounds-checking branches and retrieval overhead inside the inner loop. Hoisting `let v_i = &vectors[i];` and iterating over the slice `vectors[(i + 1)..n].iter().enumerate()` allows the compiler to completely eliminate inner loop bounds checks. Additionally, using branch-based manual remainder slicing (e.g. testing `rem_l.len() >= 4` directly) is significantly faster and more readable than creating nested chunk iterators and zipping them via `chunks_exact(4)`.
+**Action:** For pairwise matrix loops, always hoist outer loop references and iterate over direct slice windows to elide inner bounds checking, and use direct branch-based slice-checks over temporary remainder iterators.
+
 ## 2026-06-07 - [Early Return on Single Client Federated Averaging]
 **Learning:** Checking for single-element collections in aggregate reduction logic (such as federated averaging with only 1 client vector) and performing an early return avoids unnecessary allocation, vector initialization, bounds checks, chunk iterations, floating-point division, and normalization multiplications. Bypassing these hot-path operations entirely yields massive speedups (~45% execution speedup under TEE execution benchmarks).
 **Action:** When performing aggregate operations, always check for trivial collection sizes (such as size 1) and early return the input immediately to bypass computation loops and normalization arithmetic.
