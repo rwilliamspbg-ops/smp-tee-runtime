@@ -155,6 +155,24 @@ impl TeeGuard for InMemoryTee {
             return Err(TeeError::NotInitialized);
         }
 
+        // Optimized: Introduce a single-pointer fast path for Federated Averaging.
+        // Instead of converting bytes to f32 vectors, running averaging, cloning, and converting
+        // back to bytes, we directly return a cloned copy of the source vector bytes.
+        // This reduces heap allocations from 3 to 1 and completely elides floating-point deserialization/serialization.
+        if input_ptrs.len() == 1 && params.algorithm == AggregationAlgorithm::FederatedAveraging {
+            let ptr = input_ptrs[0];
+            let bytes = self
+                .allocations
+                .get(&(ptr as usize))
+                .ok_or(TeeError::InvalidPointer)?;
+            if bytes.len() % 4 != 0 {
+                return Err(TeeError::InvalidInput(
+                    "payload length must be a multiple of 4",
+                ));
+            }
+            return Ok(bytes.clone());
+        }
+
         let vectors = input_ptrs
             .iter()
             .map(|ptr| self.read_vector(*ptr))
