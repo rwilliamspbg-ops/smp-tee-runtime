@@ -57,6 +57,31 @@ fn benchmark_tee_encode_decode(c: &mut Criterion) {
             .unwrap()
         })
     });
+
+    // 50 clients multi-pointer benchmark to measure tee execution and deserialization overhead
+    let mut tee_large = InMemoryTee::default();
+    tee_large.initialize().unwrap();
+    let mut input_ptrs = Vec::new();
+    for i in 0..50 {
+        let p = tee_large.allocate_memory(size).unwrap();
+        let client_data = vec![i as f32; 10000];
+        let bytes: Vec<u8> = client_data.iter().flat_map(|v| v.to_le_bytes()).collect();
+        tee_large.write_data(p, &bytes).unwrap();
+        input_ptrs.push(p.cast_const());
+    }
+
+    c.bench_function("tee_execute_computation_large_50_clients", |b| {
+        b.iter(|| {
+            tee_large
+                .execute_computation(
+                    black_box(&input_ptrs),
+                    black_box(&ComputationParams {
+                        algorithm: AggregationAlgorithm::FederatedAveraging,
+                    }),
+                )
+                .unwrap()
+        })
+    });
 }
 
 fn benchmark_multi_krum(c: &mut Criterion) {
