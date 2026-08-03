@@ -74,13 +74,19 @@ fn squared_l2_distance(left: &[f32], right: &[f32]) -> Option<f32> {
     Some(sum)
 }
 
-pub fn multi_krum(vectors: &[Vec<f32>], byzantine_tolerance: usize) -> Option<Vec<f32>> {
+// Optimized: Accept generic vector references `V` implementing `AsRef<[f32]>`.
+// This allows caller contexts (like `InMemoryTee::execute_computation`) to execute Multi-Krum
+// directly on zero-copy borrowed memory slices of floats, completely bypassing heavy float deserializations.
+pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) -> Option<Vec<f32>> {
     let n = vectors.len();
     if n < 2 * byzantine_tolerance + 3 {
         return None;
     }
-    let dimension = vectors.first()?.len();
-    if vectors.iter().any(|vector| vector.len() != dimension) {
+    let dimension = vectors.first()?.as_ref().len();
+    if vectors
+        .iter()
+        .any(|vector| vector.as_ref().len() != dimension)
+    {
         return None;
     }
 
@@ -89,10 +95,10 @@ pub fn multi_krum(vectors: &[Vec<f32>], byzantine_tolerance: usize) -> Option<Ve
     // Precompute symmetric pairwise distances to reduce distance calculation count by 50%
     let mut distance_matrix = vec![0.0_f32; n * n];
     for i in 0..n {
-        let v_i = &vectors[i];
+        let v_i = vectors[i].as_ref();
         for (idx, v_j) in vectors[(i + 1)..n].iter().enumerate() {
             let j = i + 1 + idx;
-            let dist = squared_l2_distance(v_i, v_j)?;
+            let dist = squared_l2_distance(v_i, v_j.as_ref())?;
             distance_matrix[i * n + j] = dist;
             distance_matrix[j * n + i] = dist;
         }
@@ -127,7 +133,7 @@ pub fn multi_krum(vectors: &[Vec<f32>], byzantine_tolerance: usize) -> Option<Ve
         }
     }
 
-    best.map(|(idx, _)| vectors[idx].clone())
+    best.map(|(idx, _)| vectors[idx].as_ref().to_vec())
 }
 
 #[cfg(test)]
