@@ -1,18 +1,24 @@
-pub fn federated_averaging(vectors: &[Vec<f32>]) -> Option<Vec<f32>> {
-    let dimension = vectors.first()?.len();
-    if vectors.iter().any(|vector| vector.len() != dimension) {
+// Optimized: Accept generic vector references `V` implementing `AsRef<[f32]>`.
+// This allows caller contexts (like `InMemoryTee::execute_computation`) to execute averaging
+// directly on zero-copy borrowed memory slices of floats, completely bypassing heavy float deserializations.
+pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
+    let dimension = vectors.first()?.as_ref().len();
+    if vectors
+        .iter()
+        .any(|vector| vector.as_ref().len() != dimension)
+    {
         return None;
     }
 
     // Optimized: If there is only one client vector to average, we can return a cloned copy of it immediately.
     // This completely bypasses any addition loops, bounds-check/assertion logic, and division/normalization multiplication.
     if vectors.len() == 1 {
-        return Some(vectors[0].clone());
+        return Some(vectors[0].as_ref().to_vec());
     }
 
     // Optimized: Initialize `acc` directly with a cloned copy of the first vector
     // rather than allocating a zero-filled vector and performing redundant addition in the first iteration.
-    let mut acc = vectors[0].clone();
+    let mut acc = vectors[0].as_ref().to_vec();
     let len = dimension;
     let acc_slice = &mut acc[..len];
 
@@ -28,10 +34,10 @@ pub fn federated_averaging(vectors: &[Vec<f32>]) -> Option<Vec<f32>> {
             // and enables parallel floating-point operations in registers, maximizing ILP and compiler vectorization.
             let mut chunks = remaining_vectors.chunks_exact(4);
             for chunk in chunks.by_ref() {
-                let v0 = &chunk[0][..len];
-                let v1 = &chunk[1][..len];
-                let v2 = &chunk[2][..len];
-                let v3 = &chunk[3][..len];
+                let v0 = &chunk[0].as_ref()[..len];
+                let v1 = &chunk[1].as_ref()[..len];
+                let v2 = &chunk[2].as_ref()[..len];
+                let v3 = &chunk[3].as_ref()[..len];
                 assert_eq!(v0.len(), len);
                 assert_eq!(v1.len(), len);
                 assert_eq!(v2.len(), len);
@@ -41,7 +47,7 @@ pub fn federated_averaging(vectors: &[Vec<f32>]) -> Option<Vec<f32>> {
                 }
             }
             for vector in chunks.remainder() {
-                let vector_slice = &vector[..len];
+                let vector_slice = &vector.as_ref()[..len];
                 assert_eq!(vector_slice.len(), len);
                 for i in 0..len {
                     acc_slice[i] += vector_slice[i];
@@ -49,7 +55,7 @@ pub fn federated_averaging(vectors: &[Vec<f32>]) -> Option<Vec<f32>> {
             }
         } else {
             for vector in remaining_vectors {
-                let vector_slice = &vector[..len];
+                let vector_slice = &vector.as_ref()[..len];
                 assert_eq!(vector_slice.len(), len);
                 for i in 0..len {
                     acc_slice[i] += vector_slice[i];
@@ -75,10 +81,10 @@ pub fn federated_averaging(vectors: &[Vec<f32>]) -> Option<Vec<f32>> {
             // while maintaining strict alignment constraints and unleashing SIMD vectorization.
             let mut chunks = remaining_vectors.chunks_exact(4);
             for chunk in chunks.by_ref() {
-                let v0 = &chunk[0][chunk_start..chunk_end];
-                let v1 = &chunk[1][chunk_start..chunk_end];
-                let v2 = &chunk[2][chunk_start..chunk_end];
-                let v3 = &chunk[3][chunk_start..chunk_end];
+                let v0 = &chunk[0].as_ref()[chunk_start..chunk_end];
+                let v1 = &chunk[1].as_ref()[chunk_start..chunk_end];
+                let v2 = &chunk[2].as_ref()[chunk_start..chunk_end];
+                let v3 = &chunk[3].as_ref()[chunk_start..chunk_end];
                 assert_eq!(v0.len(), chunk_len);
                 assert_eq!(v1.len(), chunk_len);
                 assert_eq!(v2.len(), chunk_len);
@@ -88,7 +94,7 @@ pub fn federated_averaging(vectors: &[Vec<f32>]) -> Option<Vec<f32>> {
                 }
             }
             for vector in chunks.remainder() {
-                let vector_chunk = &vector[chunk_start..chunk_end];
+                let vector_chunk = &vector.as_ref()[chunk_start..chunk_end];
                 assert_eq!(vector_chunk.len(), chunk_len);
                 for i in 0..chunk_len {
                     acc_chunk[i] += vector_chunk[i];
