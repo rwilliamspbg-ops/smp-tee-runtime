@@ -2,27 +2,45 @@
 // This allows caller contexts (like `InMemoryTee::execute_computation`) to execute averaging
 // directly on zero-copy borrowed memory slices of floats, completely bypassing heavy float deserializations.
 pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
-    let dimension = vectors.first()?.as_ref().len();
-    if vectors
-        .iter()
-        .any(|vector| vector.as_ref().len() != dimension)
-    {
+    if vectors.is_empty() {
+        return None;
+    }
+
+    // Pre-extract references to the underlying f32 slices to completely eliminate any
+    // repeated `.as_ref()` method calls (which could involve virtual/generic dispatch, Match branches,
+    // and layout checks) inside the hot loops.
+    // To avoid expensive heap allocations for small vector counts, we use a stack-allocated buffer
+    // for up to 32 vectors and fall back to a heap-allocated Vec for larger counts.
+    let mut stack_buf = [&[] as &[f32]; 32];
+    let heap_buf: Vec<&[f32]>;
+    let extracted: &[&[f32]] = if vectors.len() <= 32 {
+        for (i, v) in vectors.iter().enumerate() {
+            stack_buf[i] = v.as_ref();
+        }
+        &stack_buf[..vectors.len()]
+    } else {
+        heap_buf = vectors.iter().map(|v| v.as_ref()).collect();
+        &heap_buf
+    };
+
+    let dimension = extracted[0].len();
+    if extracted.iter().any(|v| v.len() != dimension) {
         return None;
     }
 
     // Optimized: If there is only one client vector to average, we can return a cloned copy of it immediately.
     // This completely bypasses any addition loops, bounds-check/assertion logic, and division/normalization multiplication.
-    if vectors.len() == 1 {
-        return Some(vectors[0].as_ref().to_vec());
+    if extracted.len() == 1 {
+        return Some(extracted[0].to_vec());
     }
 
     // Optimized: Initialize `acc` directly with a cloned copy of the first vector
     // rather than allocating a zero-filled vector and performing redundant addition in the first iteration.
-    let mut acc = vectors[0].as_ref().to_vec();
+    let mut acc = extracted[0].to_vec();
     let len = dimension;
     let acc_slice = &mut acc[..len];
 
-    let remaining_vectors = &vectors[1..];
+    let remaining_vectors = &extracted[1..];
 
     if len <= 1024 {
         // Fast path for small dimensions: direct iteration to avoid chunking and branch overhead
@@ -34,10 +52,10 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
             // and enables parallel floating-point operations in registers, maximizing ILP and compiler vectorization.
             let mut chunks = remaining_vectors.chunks_exact(4);
             for chunk in chunks.by_ref() {
-                let v0 = &chunk[0].as_ref()[..len];
-                let v1 = &chunk[1].as_ref()[..len];
-                let v2 = &chunk[2].as_ref()[..len];
-                let v3 = &chunk[3].as_ref()[..len];
+                let v0 = &chunk[0][..len];
+                let v1 = &chunk[1][..len];
+                let v2 = &chunk[2][..len];
+                let v3 = &chunk[3][..len];
                 assert_eq!(v0.len(), len);
                 assert_eq!(v1.len(), len);
                 assert_eq!(v2.len(), len);
@@ -47,7 +65,7 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                 }
             }
             for vector in chunks.remainder() {
-                let vector_slice = &vector.as_ref()[..len];
+                let vector_slice = &vector[..len];
                 assert_eq!(vector_slice.len(), len);
                 for i in 0..len {
                     acc_slice[i] += vector_slice[i];
@@ -55,7 +73,7 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
             }
         } else {
             for vector in remaining_vectors {
-                let vector_slice = &vector.as_ref()[..len];
+                let vector_slice = &vector[..len];
                 assert_eq!(vector_slice.len(), len);
                 for i in 0..len {
                     acc_slice[i] += vector_slice[i];
@@ -81,10 +99,10 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
             // while maintaining strict alignment constraints and unleashing SIMD vectorization.
             let mut chunks = remaining_vectors.chunks_exact(4);
             for chunk in chunks.by_ref() {
-                let v0 = &chunk[0].as_ref()[chunk_start..chunk_end];
-                let v1 = &chunk[1].as_ref()[chunk_start..chunk_end];
-                let v2 = &chunk[2].as_ref()[chunk_start..chunk_end];
-                let v3 = &chunk[3].as_ref()[chunk_start..chunk_end];
+                let v0 = &chunk[0][chunk_start..chunk_end];
+                let v1 = &chunk[1][chunk_start..chunk_end];
+                let v2 = &chunk[2][chunk_start..chunk_end];
+                let v3 = &chunk[3][chunk_start..chunk_end];
                 assert_eq!(v0.len(), chunk_len);
                 assert_eq!(v1.len(), chunk_len);
                 assert_eq!(v2.len(), chunk_len);
@@ -94,7 +112,7 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                 }
             }
             for vector in chunks.remainder() {
-                let vector_chunk = &vector.as_ref()[chunk_start..chunk_end];
+                let vector_chunk = &vector[chunk_start..chunk_end];
                 assert_eq!(vector_chunk.len(), chunk_len);
                 for i in 0..chunk_len {
                     acc_chunk[i] += vector_chunk[i];
@@ -103,7 +121,7 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
         }
     }
 
-    let denom = vectors.len() as f32;
+    let denom = extracted.len() as f32;
     let inv_denom = 1.0_f32 / denom;
     for val in acc_slice.iter_mut() {
         *val *= inv_denom;
