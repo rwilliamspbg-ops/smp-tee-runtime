@@ -82,11 +82,13 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
     if n < 2 * byzantine_tolerance + 3 {
         return None;
     }
-    let dimension = vectors.first()?.as_ref().len();
-    if vectors
-        .iter()
-        .any(|vector| vector.as_ref().len() != dimension)
-    {
+
+    // Pre-extract references to the underlying f32 slices to completely eliminate any
+    // repeated `.as_ref()` method calls inside the distance precomputation and final vector cloning.
+    let extracted: Vec<&[f32]> = vectors.iter().map(|v| v.as_ref()).collect();
+
+    let dimension = extracted[0].len();
+    if extracted.iter().any(|v| v.len() != dimension) {
         return None;
     }
 
@@ -95,10 +97,10 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
     // Precompute symmetric pairwise distances to reduce distance calculation count by 50%
     let mut distance_matrix = vec![0.0_f32; n * n];
     for i in 0..n {
-        let v_i = vectors[i].as_ref();
-        for (idx, v_j) in vectors[(i + 1)..n].iter().enumerate() {
+        let v_i = extracted[i];
+        for (idx, v_j) in extracted[(i + 1)..n].iter().enumerate() {
             let j = i + 1 + idx;
-            let dist = squared_l2_distance(v_i, v_j.as_ref())?;
+            let dist = squared_l2_distance(v_i, v_j)?;
             distance_matrix[i * n + j] = dist;
             distance_matrix[j * n + i] = dist;
         }
@@ -133,7 +135,7 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
         }
     }
 
-    best.map(|(idx, _)| vectors[idx].as_ref().to_vec())
+    best.map(|(idx, _)| extracted[idx].to_vec())
 }
 
 #[cfg(test)]
