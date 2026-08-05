@@ -85,7 +85,19 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
 
     // Pre-extract references to the underlying f32 slices to completely eliminate any
     // repeated `.as_ref()` method calls inside the distance precomputation and final vector cloning.
-    let extracted: Vec<&[f32]> = vectors.iter().map(|v| v.as_ref()).collect();
+    // To avoid expensive heap allocations for typical small vector counts, we use a hybrid
+    // stack-allocated buffer for up to 64 vectors and fall back to a heap-allocated Vec for larger counts.
+    let mut stack_buf = [&[] as &[f32]; 64];
+    let heap_buf: Vec<&[f32]>;
+    let extracted: &[&[f32]] = if n <= 64 {
+        for (i, v) in vectors.iter().enumerate() {
+            stack_buf[i] = v.as_ref();
+        }
+        &stack_buf[..n]
+    } else {
+        heap_buf = vectors.iter().map(|v| v.as_ref()).collect();
+        &heap_buf
+    };
 
     let dimension = extracted[0].len();
     if extracted.iter().any(|v| v.len() != dimension) {
