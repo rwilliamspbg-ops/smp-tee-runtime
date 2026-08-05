@@ -10,10 +10,10 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
     // repeated `.as_ref()` method calls (which could involve virtual/generic dispatch, Match branches,
     // and layout checks) inside the hot loops.
     // To avoid expensive heap allocations for small vector counts, we use a stack-allocated buffer
-    // for up to 32 vectors and fall back to a heap-allocated Vec for larger counts.
-    let mut stack_buf = [&[] as &[f32]; 32];
+    // for up to 64 vectors and fall back to a heap-allocated Vec for larger counts.
+    let mut stack_buf = [&[] as &[f32]; 64];
     let heap_buf: Vec<&[f32]>;
-    let extracted: &[&[f32]] = if vectors.len() <= 32 {
+    let extracted: &[&[f32]] = if vectors.len() <= 64 {
         for (i, v) in vectors.iter().enumerate() {
             stack_buf[i] = v.as_ref();
         }
