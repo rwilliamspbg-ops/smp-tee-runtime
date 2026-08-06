@@ -61,7 +61,11 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                 assert_eq!(v2.len(), len);
                 assert_eq!(v3.len(), len);
                 for i in 0..len {
-                    acc_slice[i] += v0[i] + v1[i] + v2[i] + v3[i];
+                    // Optimized: Group additions as `(v0[i] + v1[i]) + (v2[i] + v3[i])` to reduce
+                    // instruction dependency chain latency from 4 sequential additions to 3.
+                    // This allows the CPU's execution units to compute `v0 + v1` and `v2 + v3` in parallel,
+                    // maximizing Instruction-Level Parallelism (ILP).
+                    acc_slice[i] += (v0[i] + v1[i]) + (v2[i] + v3[i]);
                 }
             }
             for vector in chunks.remainder() {
@@ -108,7 +112,11 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                 assert_eq!(v2.len(), chunk_len);
                 assert_eq!(v3.len(), chunk_len);
                 for i in 0..chunk_len {
-                    acc_chunk[i] += v0[i] + v1[i] + v2[i] + v3[i];
+                    // Optimized: Group additions as `(v0[i] + v1[i]) + (v2[i] + v3[i])` to reduce
+                    // instruction dependency chain latency from 4 sequential additions to 3.
+                    // This allows the CPU's execution units to compute `v0 + v1` and `v2 + v3` in parallel,
+                    // maximizing Instruction-Level Parallelism (ILP) and enabling optimal auto-vectorization.
+                    acc_chunk[i] += (v0[i] + v1[i]) + (v2[i] + v3[i]);
                 }
             }
             for vector in chunks.remainder() {
