@@ -110,10 +110,11 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
     let mut distance_matrix = vec![0.0_f32; n * n];
     for i in 0..n {
         let v_i = extracted[i];
+        let row_i_start = i * n;
         for (idx, v_j) in extracted[(i + 1)..n].iter().enumerate() {
             let j = i + 1 + idx;
             let dist = squared_l2_distance(v_i, v_j)?;
-            distance_matrix[i * n + j] = dist;
+            distance_matrix[row_i_start + j] = dist;
             distance_matrix[j * n + i] = dist;
         }
     }
