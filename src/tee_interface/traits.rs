@@ -189,20 +189,31 @@ impl TeeGuard for InMemoryTee {
             return Ok(bytes.clone());
         }
 
-        // Highly Optimized: Extract highly-optimized, zero-copy `CowSlice` references
-        // directly from TEE allocated memory. This avoids all intermediate allocations,
-        // redundant hash map lookups, element copies, and conversions during computation.
-        let vectors = input_ptrs
-            .iter()
-            .map(|ptr| self.get_input_slice(*ptr))
-            .collect::<Result<Vec<_>, _>>()?;
+        // Highly Optimized: Extract zero-copy `CowSlice` references directly from TEE allocated memory.
+        // To avoid expensive heap allocation of vectors for small client counts, we use a hybrid
+        // stack-allocated buffer for up to 64 vectors and fall back to a heap-allocated Vec for larger counts.
+        const DEFAULT_COW_SLICE: CowSlice<'static> = CowSlice::Borrowed(&[]);
+        let mut stack_vectors = [DEFAULT_COW_SLICE; 64];
+        let heap_vectors: Vec<CowSlice<'_>>;
+        let vectors: &[CowSlice<'_>] = if input_ptrs.len() <= 64 {
+            for (i, &ptr) in input_ptrs.iter().enumerate() {
+                stack_vectors[i] = self.get_input_slice(ptr)?;
+            }
+            &stack_vectors[..input_ptrs.len()]
+        } else {
+            heap_vectors = input_ptrs
+                .iter()
+                .map(|ptr| self.get_input_slice(*ptr))
+                .collect::<Result<Vec<_>, _>>()?;
+            &heap_vectors
+        };
 
         let result = match params.algorithm {
-            AggregationAlgorithm::FederatedAveraging => federated_averaging(&vectors)
+            AggregationAlgorithm::FederatedAveraging => federated_averaging(vectors)
                 .ok_or(TeeError::InvalidInput("invalid federated averaging input"))?,
             AggregationAlgorithm::MultiKrum {
                 byzantine_tolerance,
-            } => multi_krum(&vectors, byzantine_tolerance)
+            } => multi_krum(vectors, byzantine_tolerance)
                 .ok_or(TeeError::InvalidInput("invalid multi-krum input"))?,
         };
 
