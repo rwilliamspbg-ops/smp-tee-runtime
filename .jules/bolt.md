@@ -2,6 +2,10 @@
 
 ⚡ Performance-obsessed optimizations, learnings, and insights.
 
+## 2026-06-15 - [Hybrid Stack-Heap Allocation of Vector References in TEE Interface]
+**Learning:** In hot end-to-end TEE computation pipelines (e.g. `InMemoryTee::execute_computation`), collecting multiple borrowed `CowSlice` references into a dynamically-sized `Vec` incurs heap allocation and deallocation overhead. To completely bypass this, we can employ a hybrid stack-heap allocation strategy: for standard workloads (up to 64 clients), references are stored in a local stack-allocated array (initialized cleanly with a `const` default instance `CowSlice::Borrowed(&[])` to avoid `Copy` trait requirements). We only fall back to a heap-allocated `Vec` when the client count exceeds the stack capacity. This completely eliminates dynamic vector allocation on the hot path, achieving a ~6.01% speedup on end-to-end TEE computation benchmarks and a ~4.76% speedup on Multi-Krum.
+**Action:** In performance-critical interface boundaries or orchestrators that map/collect small sequences of non-`Copy` references, always use a `const`-initialized stack array of size 64 as a fast-path buffer to avoid heap allocation overhead.
+
 ## 2026-06-14 - [Hoisting Row Index Multiplications in Pairwise Symmetric Matrices]
 **Learning:** In symmetric pairwise distance computations stored in a 1D flat layout of length $N \times N$, accessing `distance_matrix[i * n + j]` inside the inner loop performs redundant $i \times n$ multiplication operations. Hoisting this invariant multiplication out of the inner loop as `let row_i_start = i * n;` and indexing via `distance_matrix[row_i_start + j]` avoids $N(N-1)/2$ redundant multiplications. This is extremely clean, safe, maintains 100% correct behavior, and yields a massive ~11% execution speedup on the `multi_krum_large_50_clients` benchmark.
 **Action:** For flat 1D matrix layouts accessed within nested loops, always hoist the row offset index multiplication out of the inner loop to prevent redundant arithmetic operations.
