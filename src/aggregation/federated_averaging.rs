@@ -68,20 +68,71 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                     acc_slice[i] += (v0[i] + v1[i]) + (v2[i] + v3[i]);
                 }
             }
-            for vector in chunks.remainder() {
-                let vector_slice = &vector[..len];
-                assert_eq!(vector_slice.len(), len);
-                for i in 0..len {
-                    acc_slice[i] += vector_slice[i];
+            // Optimized: Replace the remainder loop with an explicit match statement
+            // on the remainder length to fuse additions into a single loop, reducing memory write traffic.
+            let remainder = chunks.remainder();
+            match remainder.len() {
+                3 => {
+                    let v0 = &remainder[0][..len];
+                    let v1 = &remainder[1][..len];
+                    let v2 = &remainder[2][..len];
+                    assert_eq!(v0.len(), len);
+                    assert_eq!(v1.len(), len);
+                    assert_eq!(v2.len(), len);
+                    for i in 0..len {
+                        acc_slice[i] += (v0[i] + v1[i]) + v2[i];
+                    }
                 }
+                2 => {
+                    let v0 = &remainder[0][..len];
+                    let v1 = &remainder[1][..len];
+                    assert_eq!(v0.len(), len);
+                    assert_eq!(v1.len(), len);
+                    for i in 0..len {
+                        acc_slice[i] += v0[i] + v1[i];
+                    }
+                }
+                1 => {
+                    let v0 = &remainder[0][..len];
+                    assert_eq!(v0.len(), len);
+                    for i in 0..len {
+                        acc_slice[i] += v0[i];
+                    }
+                }
+                _ => {}
             }
         } else {
-            for vector in remaining_vectors {
-                let vector_slice = &vector[..len];
-                assert_eq!(vector_slice.len(), len);
-                for i in 0..len {
-                    acc_slice[i] += vector_slice[i];
+            // Optimized: Replace the fallback loop with an explicit match statement
+            // on the remaining_vectors length to fuse additions into a single loop.
+            match remaining_vectors.len() {
+                3 => {
+                    let v0 = &remaining_vectors[0][..len];
+                    let v1 = &remaining_vectors[1][..len];
+                    let v2 = &remaining_vectors[2][..len];
+                    assert_eq!(v0.len(), len);
+                    assert_eq!(v1.len(), len);
+                    assert_eq!(v2.len(), len);
+                    for i in 0..len {
+                        acc_slice[i] += (v0[i] + v1[i]) + v2[i];
+                    }
                 }
+                2 => {
+                    let v0 = &remaining_vectors[0][..len];
+                    let v1 = &remaining_vectors[1][..len];
+                    assert_eq!(v0.len(), len);
+                    assert_eq!(v1.len(), len);
+                    for i in 0..len {
+                        acc_slice[i] += v0[i] + v1[i];
+                    }
+                }
+                1 => {
+                    let v0 = &remaining_vectors[0][..len];
+                    assert_eq!(v0.len(), len);
+                    for i in 0..len {
+                        acc_slice[i] += v0[i];
+                    }
+                }
+                _ => {}
             }
         }
     } else {
@@ -119,12 +170,38 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                     acc_chunk[i] += (v0[i] + v1[i]) + (v2[i] + v3[i]);
                 }
             }
-            for vector in chunks.remainder() {
-                let vector_chunk = &vector[chunk_start..chunk_end];
-                assert_eq!(vector_chunk.len(), chunk_len);
-                for i in 0..chunk_len {
-                    acc_chunk[i] += vector_chunk[i];
+            // Optimized: Replace the remainder loop with an explicit match statement
+            // on the remainder length to fuse additions into a single loop, reducing writeback traffic.
+            let remainder = chunks.remainder();
+            match remainder.len() {
+                3 => {
+                    let v0 = &remainder[0][chunk_start..chunk_end];
+                    let v1 = &remainder[1][chunk_start..chunk_end];
+                    let v2 = &remainder[2][chunk_start..chunk_end];
+                    assert_eq!(v0.len(), chunk_len);
+                    assert_eq!(v1.len(), chunk_len);
+                    assert_eq!(v2.len(), chunk_len);
+                    for i in 0..chunk_len {
+                        acc_chunk[i] += (v0[i] + v1[i]) + v2[i];
+                    }
                 }
+                2 => {
+                    let v0 = &remainder[0][chunk_start..chunk_end];
+                    let v1 = &remainder[1][chunk_start..chunk_end];
+                    assert_eq!(v0.len(), chunk_len);
+                    assert_eq!(v1.len(), chunk_len);
+                    for i in 0..chunk_len {
+                        acc_chunk[i] += v0[i] + v1[i];
+                    }
+                }
+                1 => {
+                    let v0 = &remainder[0][chunk_start..chunk_end];
+                    assert_eq!(v0.len(), chunk_len);
+                    for i in 0..chunk_len {
+                        acc_chunk[i] += v0[i];
+                    }
+                }
+                _ => {}
             }
         }
     }
