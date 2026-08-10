@@ -87,11 +87,12 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
     // repeated `.as_ref()` method calls inside the distance precomputation and final vector cloning.
     // To avoid expensive heap allocations for typical small vector counts, we use a hybrid
     // stack-allocated buffer for up to 64 vectors and fall back to a heap-allocated Vec for larger counts.
+    // Zipping with a slice window of `stack_buf` completely avoids index bounds checks on initialization.
     let mut stack_buf = [&[] as &[f32]; 64];
     let heap_buf: Vec<&[f32]>;
     let extracted: &[&[f32]] = if n <= 64 {
-        for (i, v) in vectors.iter().enumerate() {
-            stack_buf[i] = v.as_ref();
+        for (dest, src) in stack_buf[..n].iter_mut().zip(vectors.iter()) {
+            *dest = src.as_ref();
         }
         &stack_buf[..n]
     } else {
@@ -108,14 +109,31 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
 
     // Precompute symmetric pairwise distances to reduce distance calculation count by 50%
     let mut distance_matrix = vec![0.0_f32; n * n];
+
+    // Optimized: Precalculate row offsets of the flat 1D matrix layout to avoid
+    // redundant multiplication operations `j * n` inside the hot inner loop.
+    // For small workloads (up to 64 clients), references are stored in a stack-allocated array
+    // to bypass heap allocation, only falling back to a heap-allocated Vec for larger lists.
+    let mut stack_offsets = [0; 64];
+    let heap_offsets: Vec<usize>;
+    let row_offsets: &[usize] = if n <= 64 {
+        for (r, offset) in stack_offsets[..n].iter_mut().enumerate() {
+            *offset = r * n;
+        }
+        &stack_offsets[..n]
+    } else {
+        heap_offsets = (0..n).map(|r| r * n).collect();
+        &heap_offsets
+    };
+
     for i in 0..n {
         let v_i = extracted[i];
-        let row_i_start = i * n;
+        let row_i_start = row_offsets[i];
         for (idx, v_j) in extracted[(i + 1)..n].iter().enumerate() {
             let j = i + 1 + idx;
             let dist = squared_l2_distance(v_i, v_j)?;
             distance_matrix[row_i_start + j] = dist;
-            distance_matrix[j * n + i] = dist;
+            distance_matrix[row_offsets[j] + i] = dist;
         }
     }
 
