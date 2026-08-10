@@ -192,14 +192,16 @@ impl TeeGuard for InMemoryTee {
         // Highly Optimized: Extract zero-copy `CowSlice` references directly from TEE allocated memory.
         // To avoid expensive heap allocation of vectors for small client counts, we use a hybrid
         // stack-allocated buffer for up to 64 vectors and fall back to a heap-allocated Vec for larger counts.
+        // Zipping with a slice window of `stack_vectors` completely avoids index bounds checks on initialization.
         const DEFAULT_COW_SLICE: CowSlice<'static> = CowSlice::Borrowed(&[]);
         let mut stack_vectors = [DEFAULT_COW_SLICE; 64];
         let heap_vectors: Vec<CowSlice<'_>>;
         let vectors: &[CowSlice<'_>] = if input_ptrs.len() <= 64 {
-            for (i, &ptr) in input_ptrs.iter().enumerate() {
-                stack_vectors[i] = self.get_input_slice(ptr)?;
+            let len = input_ptrs.len();
+            for (dest, &ptr) in stack_vectors[..len].iter_mut().zip(input_ptrs.iter()) {
+                *dest = self.get_input_slice(ptr)?;
             }
-            &stack_vectors[..input_ptrs.len()]
+            &stack_vectors[..len]
         } else {
             heap_vectors = input_ptrs
                 .iter()
