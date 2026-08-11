@@ -129,11 +129,14 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
     for i in 0..n {
         let v_i = extracted[i];
         let row_i_start = row_offsets[i];
-        for (idx, v_j) in extracted[(i + 1)..n].iter().enumerate() {
-            let j = i + 1 + idx;
+        let next_extracted = &extracted[(i + 1)..n];
+        let next_offsets = &row_offsets[(i + 1)..n];
+        let mut row_i_idx = row_i_start + i + 1;
+        for (v_j, &offset_j) in next_extracted.iter().zip(next_offsets.iter()) {
             let dist = squared_l2_distance(v_i, v_j)?;
-            distance_matrix[row_i_start + j] = dist;
-            distance_matrix[row_offsets[j] + i] = dist;
+            distance_matrix[row_i_idx] = dist;
+            distance_matrix[offset_j + i] = dist;
+            row_i_idx += 1;
         }
     }
 

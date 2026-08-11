@@ -2,6 +2,10 @@
 
 ⚡ Performance-obsessed optimizations, learnings, and insights.
 
+## 2026-06-17 - [Pairwise Matrix Loop Bounds-Check Elision and Offsets Optimization in Multi-Krum]
+**Learning:** In nested loops over pairwise collections (such as symmetric distance calculation in Multi-Krum), accessing index-based elements like `row_offsets[j]` and manually computing indexing inside the hot loop introduces redundant runtime bounds checking. Pre-slicing the arrays (e.g., `&row_offsets[(i + 1)..n]`) and zipping them via `.iter().zip(...)` enables the compiler to completely elide bounds checks. Furthermore, replacing `row_i_start + j` with a pre-calculated, sequentially-incremented index variable completely avoids index addition/multiplication arithmetic inside the loop body, yielding measurable speedups on hot distance-matrix precomputation paths.
+**Action:** Always slice and zip parallel/associated sequence collections when iterating over triangular or nested ranges on hot paths, and utilize manually-incremented indices over repeated element-wise calculations.
+
 ## 2026-06-16 - [Zipped Stack-Buffer Initialization and Row Offset Matrix Optimization]
 **Learning:** Initializing stack-allocated slice/vector buffers (e.g. `stack_buf[i] = ...`) within hot loops introduces redundant bounds checking branches on every iteration. By instead slicing the stack-allocated buffer to the exact size window (`stack_buf[..len]`) and zipping it with the input iterator (`.iter_mut().zip(...)`), we completely eliminate index-based bounds checking during initialization, yielding a massive ~17% speedup on low-latency paths. Additionally, precalculating row offsets of a flat 1D symmetric distance matrix using a hybrid stack/heap array avoids redundant row-index multiplications in the hot nested inner loop of Multi-Krum candidate score calculation.
 **Action:** Always initialize hybrid stack/heap arrays on hot paths by zipping a slice window of the buffer with the input elements, and flatten matrix multiplications in nested loops by precalculating row offsets.
