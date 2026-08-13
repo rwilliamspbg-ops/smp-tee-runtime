@@ -20,15 +20,15 @@ impl XdpIngress {
         let chunks_exact = ring_bytes.chunks_exact(frame_size);
         let remainder = chunks_exact.remainder();
         let num_chunks = chunks_exact.len();
-        let capacity = if remainder.is_empty() {
-            num_chunks
-        } else {
-            num_chunks + 1
-        };
+
+        // Optimized: Avoid conditional check if remainder is empty by directly setting capacity
+        // and mapping chunks. If remainder is empty, pushing it is skipped, avoiding allocation overhead.
+        let has_remainder = !remainder.is_empty();
+        let capacity = num_chunks + (has_remainder as usize);
 
         let mut packets = Vec::with_capacity(capacity);
         packets.extend(chunks_exact.map(|chunk| PacketView { data: chunk }));
-        if !remainder.is_empty() {
+        if has_remainder {
             packets.push(PacketView { data: remainder });
         }
         packets
