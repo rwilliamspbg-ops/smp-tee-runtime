@@ -2,6 +2,10 @@
 
 ⚡ Performance-obsessed optimizations, learnings, and insights.
 
+## 2026-06-18 - [Custom Fast Hasher for TEE Pointer Key Lookup]
+**Learning:** In memory-restricted TEE emulation runtime environments where allocation lookups are indexed by sequential `usize` pointers, the default `SipHash` introduces significant cryptographic hashing overhead. Because these keys are internal and sequentially/predictably generated rather than untrusted external user input, we do not require HashDoS collision-resistance. Implementing a custom non-cryptographic `Hasher` and `BuildHasher` (utilizing a simple multiplication-based hash with prime multiplier `0x517cc1b727220a95`) completely bypasses SipHash's performance penalty, speeding up critical map lookups and writes.
+**Action:** Always replace `SipHash` with a fast, non-cryptographic multiplier-based hasher for `HashMap` fields that only index trusted, internally-allocated primitive or integer keys like `usize` pointers.
+
 ## 2026-06-17 - [Pairwise Matrix Loop Bounds-Check Elision and Offsets Optimization in Multi-Krum]
 **Learning:** In nested loops over pairwise collections (such as symmetric distance calculation in Multi-Krum), accessing index-based elements like `row_offsets[j]` and manually computing indexing inside the hot loop introduces redundant runtime bounds checking. Pre-slicing the arrays (e.g., `&row_offsets[(i + 1)..n]`) and zipping them via `.iter().zip(...)` enables the compiler to completely elide bounds checks. Furthermore, replacing `row_i_start + j` with a pre-calculated, sequentially-incremented index variable completely avoids index addition/multiplication arithmetic inside the loop body, yielding measurable speedups on hot distance-matrix precomputation paths.
 **Action:** Always slice and zip parallel/associated sequence collections when iterating over triangular or nested ranges on hot paths, and utilize manually-incremented indices over repeated element-wise calculations.
