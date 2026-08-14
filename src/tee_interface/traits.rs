@@ -1,6 +1,75 @@
 use std::collections::HashMap;
+use std::hash::{BuildHasher, Hasher};
 
 use crate::aggregation::{federated_averaging, multi_krum};
+
+/// A high-performance, non-cryptographic hasher optimized specifically for `usize` pointer keys.
+/// It completely bypasses SipHash overhead (which is designed for HashDoS resistance) to speed up
+/// TEE memory allocation lookup on performance-critical paths.
+#[derive(Default, Clone, Copy)]
+pub struct FastHasher {
+    hash: u64,
+}
+
+impl FastHasher {
+    #[inline(always)]
+    fn add_to_hash(&mut self, i: u64) {
+        const K: u64 = 0x517cc1b727220a95;
+        self.hash = (self.hash.rotate_left(5) ^ i).wrapping_mul(K);
+    }
+}
+
+impl Hasher for FastHasher {
+    #[inline(always)]
+    fn finish(&self) -> u64 {
+        self.hash
+    }
+
+    #[inline(always)]
+    fn write(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.add_to_hash(byte as u64);
+        }
+    }
+
+    #[inline(always)]
+    fn write_u8(&mut self, i: u8) {
+        self.add_to_hash(i as u64);
+    }
+
+    #[inline(always)]
+    fn write_u16(&mut self, i: u16) {
+        self.add_to_hash(i as u64);
+    }
+
+    #[inline(always)]
+    fn write_u32(&mut self, i: u32) {
+        self.add_to_hash(i as u64);
+    }
+
+    #[inline(always)]
+    fn write_u64(&mut self, i: u64) {
+        self.add_to_hash(i);
+    }
+
+    #[inline(always)]
+    fn write_usize(&mut self, i: usize) {
+        self.add_to_hash(i as u64);
+    }
+}
+
+/// A builder for `FastHasher`.
+#[derive(Default, Clone, Copy)]
+pub struct BuildFastHasher;
+
+impl BuildHasher for BuildFastHasher {
+    type Hasher = FastHasher;
+
+    #[inline(always)]
+    fn build_hasher(&self) -> Self::Hasher {
+        FastHasher { hash: 0 }
+    }
+}
 
 /// A clone-on-write styled slice containing either borrowed or owned floating-point data.
 /// This enables zero-copy passing of contiguous floating-point data extracted directly from TEE allocations.
@@ -53,7 +122,7 @@ pub trait TeeGuard {
 #[derive(Debug, Default)]
 pub struct InMemoryTee {
     initialized: bool,
-    allocations: HashMap<usize, Vec<u8>>,
+    allocations: HashMap<usize, Vec<u8>, BuildFastHasher>,
 }
 
 impl InMemoryTee {
