@@ -1,8 +1,7 @@
 #[inline(always)]
-fn squared_l2_distance(left: &[f32], right: &[f32]) -> Option<f32> {
-    if left.len() != right.len() {
-        return None;
-    }
+fn squared_l2_distance(left: &[f32], right: &[f32]) -> f32 {
+    // Length equality is pre-validated in `multi_krum` prior to calling `squared_l2_distance`.
+    // Returning `f32` directly avoids redundant branch checks and Option wrapping/unwrapping on every pair.
 
     // Optimized: Manual loop unrolling by 8 with independent accumulators
     // zipped with `chunks_exact(8)` and cast to fixed-size array references.
@@ -71,7 +70,7 @@ fn squared_l2_distance(left: &[f32], right: &[f32]) -> Option<f32> {
         sum += delta * delta;
     }
 
-    Some(sum)
+    sum
 }
 
 // Optimized: Accept generic vector references `V` implementing `AsRef<[f32]>`.
@@ -133,7 +132,7 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
         let next_offsets = &row_offsets[(i + 1)..n];
         let mut row_i_idx = row_i_start + i + 1;
         for (v_j, &offset_j) in next_extracted.iter().zip(next_offsets.iter()) {
-            let dist = squared_l2_distance(v_i, v_j)?;
+            let dist = squared_l2_distance(v_i, v_j);
             distance_matrix[row_i_idx] = dist;
             distance_matrix[offset_j + i] = dist;
             row_i_idx += 1;
