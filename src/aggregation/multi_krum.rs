@@ -48,7 +48,7 @@ fn squared_l2_distance(left: &[f32], right: &[f32]) -> f32 {
     let rem_l = left_chunks.remainder();
     let rem_r = right_chunks.remainder();
 
-    let rem2_l = if rem_l.len() >= 4 {
+    let (rem2_l, rem2_r) = if rem_l.len() >= 4 {
         let cl: &[f32; 4] = rem_l[..4].try_into().unwrap();
         let cr: &[f32; 4] = rem_r[..4].try_into().unwrap();
 
@@ -58,16 +58,34 @@ fn squared_l2_distance(left: &[f32], right: &[f32]) -> f32 {
         let d3 = cl[3] - cr[3];
 
         sum += d0 * d0 + d1 * d1 + d2 * d2 + d3 * d3;
-        &rem_l[4..]
+        (&rem_l[4..], &rem_r[4..])
     } else {
-        rem_l
+        (rem_l, rem_r)
     };
 
-    let rem2_r = if rem_r.len() >= 4 { &rem_r[4..] } else { rem_r };
-
-    for (l, r) in rem2_l.iter().zip(rem2_r.iter()) {
-        let delta = l - r;
-        sum += delta * delta;
+    // Optimized: Match on remainder length using fixed-size array conversions
+    // to eliminate iterator overhead and bounds checking branches.
+    match rem2_l.len() {
+        3 => {
+            let cl: &[f32; 3] = rem2_l.try_into().unwrap();
+            let cr: &[f32; 3] = rem2_r.try_into().unwrap();
+            let d0 = cl[0] - cr[0];
+            let d1 = cl[1] - cr[1];
+            let d2 = cl[2] - cr[2];
+            sum += d0 * d0 + d1 * d1 + d2 * d2;
+        }
+        2 => {
+            let cl: &[f32; 2] = rem2_l.try_into().unwrap();
+            let cr: &[f32; 2] = rem2_r.try_into().unwrap();
+            let d0 = cl[0] - cr[0];
+            let d1 = cl[1] - cr[1];
+            sum += d0 * d0 + d1 * d1;
+        }
+        1 => {
+            let delta = rem2_l[0] - rem2_r[0];
+            sum += delta * delta;
+        }
+        _ => {}
     }
 
     sum
