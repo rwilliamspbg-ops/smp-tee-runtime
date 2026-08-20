@@ -175,7 +175,22 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
         // We select the `neighbors + 1` smallest elements (index `neighbors` in 0-indexed terms).
         let score: f32 = if neighbors > 0 {
             row.select_nth_unstable_by(neighbors, |a, b| a.total_cmp(b));
-            row[..=neighbors].iter().sum()
+            // Optimized: Sum the `neighbors + 1` smallest distances using two independent accumulators (`sum0` and `sum1`).
+            // This eliminates the single-accumulator sequential addition dependency chain, allowing CPU floating-point
+            // execution units to perform additions concurrently in parallel and boosting candidate score calculation speed.
+            let sub = &row[..=neighbors];
+            let mut sum0 = 0.0_f32;
+            let mut sum1 = 0.0_f32;
+            let chunks = sub.chunks_exact(2);
+            let rem = chunks.remainder();
+            for chunk in chunks {
+                sum0 += chunk[0];
+                sum1 += chunk[1];
+            }
+            if !rem.is_empty() {
+                sum0 += rem[0];
+            }
+            sum0 + sum1
         } else {
             0.0
         };
