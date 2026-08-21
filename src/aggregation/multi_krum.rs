@@ -143,9 +143,8 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
         &heap_offsets
     };
 
-    for i in 0..n {
-        let v_i = extracted[i];
-        let row_i_start = row_offsets[i];
+    // Optimized: Zip `extracted` and `row_offsets` to avoid index bounds checks on `extracted[i]` and `row_offsets[i]`.
+    for (i, (&v_i, &row_i_start)) in extracted.iter().zip(row_offsets.iter()).enumerate() {
         let next_extracted = &extracted[(i + 1)..n];
         let next_offsets = &row_offsets[(i + 1)..n];
         let mut row_i_idx = row_i_start + i + 1;
@@ -159,18 +158,14 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
 
     let mut best: Option<(usize, f32)> = None;
 
-    // Optimized: Mutate rows of `distance_matrix` in-place during the selection loop.
+    // Optimized: Use `distance_matrix.chunks_exact_mut(n).enumerate()` to iterate over rows in-place.
+    // This completely elides `i * n` row multiplication and bounds checks on `distance_matrix[row_start..row_end]`.
     // Since row `i` is never accessed in any subsequent iterations or outside this loop,
-    // we can run `select_nth_unstable_by` directly on `distance_matrix[row_start..row_end]`.
-    // This completely eliminates any helper vectors or temporary heap allocations,
-    // and avoids ALL `copy_from_slice` overhead.
+    // we can run `select_nth_unstable_by` directly on `row`.
     // Note that the self-distance is 0.0, which is always the minimum possible squared distance, so the sum of the
     // `neighbors + 1` smallest distances including itself is mathematically identical to the sum of the
     // `neighbors` smallest distances excluding itself.
-    for i in 0..n {
-        let row_start = i * n;
-        let row = &mut distance_matrix[row_start..(row_start + n)];
-
+    for (i, row) in distance_matrix.chunks_exact_mut(n).enumerate() {
         // Use select_nth_unstable_by to partition the vector in O(N) time.
         // We select the `neighbors + 1` smallest elements (index `neighbors` in 0-indexed terms).
         let score: f32 = if neighbors > 0 {
