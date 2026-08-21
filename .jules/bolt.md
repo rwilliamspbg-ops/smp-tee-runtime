@@ -2,6 +2,10 @@
 
 ⚡ Performance-obsessed optimizations, learnings, and insights.
 
+## 2026-06-20 - [Chunks Exact Mut Matrix Row Iteration in Multi-Krum]
+**Learning:** In 1D flat matrix representations (e.g. `distance_matrix` in Multi-Krum), iterating over rows using range indexing `distance_matrix[row_start..(row_start + n)]` with manual multiplication `row_start = i * n` introduces arithmetic multiplication and per-iteration slice bounds checking overhead. Replacing the manual loop with `distance_matrix.chunks_exact_mut(n).enumerate()` allows the Rust compiler to statically guarantee that each chunk has length `n`, eliding row multiplication arithmetic and all range bounds checks.
+**Action:** Always prefer `chunks_exact` / `chunks_exact_mut` when iterating over rows of flat 1D matrix layouts to eliminate index arithmetic and range bounds checks.
+
 ## 2026-06-19 - [Parallel Accumulator Summation in Candidate Score Selection]
 **Learning:** In candidate selection algorithms like Multi-Krum, summing the smallest $K$ neighbor float distances using standard `row[..=neighbors].iter().sum()` enforces a serial floating-point dependency chain on a single accumulator variable. Because IEEE-754 float additions are non-associative, LLVM cannot automatically reorder sequential additions into parallel instruction streams. Splitting the sum across two independent accumulators (`sum0` and `sum1`) using `chunks_exact(2)` allows the CPU's floating-point execution units to process additions concurrently in parallel, yielding a ~10.5% speedup on candidate score calculations.
 **Action:** When summing slices of floats on hot paths, always split additions into two or more independent accumulators using `chunks_exact(2)` to bypass serial float addition dependency stalls.
