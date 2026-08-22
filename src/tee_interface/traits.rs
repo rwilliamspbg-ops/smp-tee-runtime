@@ -258,24 +258,39 @@ impl TeeGuard for InMemoryTee {
             return Ok(bytes.clone());
         }
 
-        // Highly Optimized: Extract zero-copy `CowSlice` references directly from TEE allocated memory.
-        // To avoid expensive heap allocation of vectors for small client counts, we use a hybrid
-        // stack-allocated buffer for up to 64 vectors and fall back to a heap-allocated Vec for larger counts.
-        // Zipping with a slice window of `stack_vectors` completely avoids index bounds checks on initialization.
-        const DEFAULT_COW_SLICE: CowSlice<'static> = CowSlice::Borrowed(&[]);
-        let mut stack_vectors = [DEFAULT_COW_SLICE; 64];
-        let heap_vectors: Vec<CowSlice<'_>>;
-        let vectors: &[CowSlice<'_>] = if input_ptrs.len() <= 64 {
+        // Highly Optimized: Extract zero-copy `&[f32]` references directly from TEE allocated memory.
+        // Storing `Copy` slice references `&[f32]` in the stack buffer completely eliminates drop flags and
+        // destructor calls. For borrowed slices, lifetime is tied to `&self`, bypassing intermediate allocations.
+        let mut stack_vectors = [&[] as &[f32]; 64];
+        let mut heap_owned: Vec<Vec<f32>> = Vec::new();
+        let heap_cows: Vec<CowSlice<'_>>;
+        let heap_vectors: Vec<&[f32]>;
+        let vectors: &[&[f32]] = if input_ptrs.len() <= 64 {
             let len = input_ptrs.len();
             for (dest, &ptr) in stack_vectors[..len].iter_mut().zip(input_ptrs.iter()) {
-                *dest = self.get_input_slice(ptr)?;
+                match self.get_input_slice(ptr)? {
+                    CowSlice::Borrowed(slice) => *dest = slice,
+                    CowSlice::Owned(vec) => {
+                        heap_owned.push(vec);
+                        let last = heap_owned.last().unwrap();
+                        *dest = unsafe { std::slice::from_raw_parts(last.as_ptr(), last.len()) };
+                    }
+                }
             }
             &stack_vectors[..len]
         } else {
-            heap_vectors = input_ptrs
+            let mut cows = Vec::with_capacity(input_ptrs.len());
+            for &ptr in input_ptrs {
+                cows.push(self.get_input_slice(ptr)?);
+            }
+            heap_cows = cows;
+            heap_vectors = heap_cows
                 .iter()
-                .map(|ptr| self.get_input_slice(*ptr))
-                .collect::<Result<Vec<_>, _>>()?;
+                .map(|c| match c {
+                    CowSlice::Borrowed(s) => *s,
+                    CowSlice::Owned(v) => v.as_slice(),
+                })
+                .collect();
             &heap_vectors
         };
 
