@@ -2,6 +2,10 @@
 
 ⚡ Performance-obsessed optimizations, learnings, and insights.
 
+## 2026-06-21 - [Copy Slice Stack Array Buffer in TEE Dispatch]
+**Learning:** In hybrid stack/heap buffers collecting slice references on hot paths (e.g. `InMemoryTee::execute_computation`), storing `CowSlice` (an enum containing `Owned(Vec<f32>)`) in a stack array `[CowSlice; 64]` forces the compiler to insert drop flags and unwinding destructor checks for all 64 elements because `Vec` implements `Drop`. By instead extracting `&'a [f32]` references from `CowSlice` and storing `Copy` slice references `[&'a [f32]; 64]` in the stack buffer, we completely eliminate compiler drop flags, unwinding checks, and destructor overhead. For standard workloads (up to 64 clients), lifetime `'a` is tied to `&'a self`, bypassing dynamic allocations while preserving public API compatibility and owned fallback handling for unaligned/non-little-endian payloads.
+**Action:** Always store `Copy` slice references (`&'a [T]`) rather than `Drop`-implementing enums or structs when building hybrid stack-allocated reference buffers on hot paths.
+
 ## 2026-06-20 - [Chunks Exact Mut Matrix Row Iteration in Multi-Krum]
 **Learning:** In 1D flat matrix representations (e.g. `distance_matrix` in Multi-Krum), iterating over rows using range indexing `distance_matrix[row_start..(row_start + n)]` with manual multiplication `row_start = i * n` introduces arithmetic multiplication and per-iteration slice bounds checking overhead. Replacing the manual loop with `distance_matrix.chunks_exact_mut(n).enumerate()` allows the Rust compiler to statically guarantee that each chunk has length `n`, eliding row multiplication arithmetic and all range bounds checks.
 **Action:** Always prefer `chunks_exact` / `chunks_exact_mut` when iterating over rows of flat 1D matrix layouts to eliminate index arithmetic and range bounds checks.
