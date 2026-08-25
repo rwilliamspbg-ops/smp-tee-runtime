@@ -260,8 +260,8 @@ impl TeeGuard for InMemoryTee {
 
         // Highly Optimized: Extract zero-copy `&[f32]` references directly from TEE allocated memory.
         // Storing `Copy` slice references `&[f32]` in the stack buffer completely eliminates drop flags and
-        // destructor calls. For borrowed slices, lifetime is tied to `&self`, bypassing intermediate allocations.
-        let mut stack_vectors = [&[] as &[f32]; 64];
+        // destructor calls. Using `MaybeUninit` avoids dummy initialization of all 64 elements on every call.
+        let mut stack_vectors = [std::mem::MaybeUninit::<&[f32]>::uninit(); 64];
         let mut heap_owned: Vec<Vec<f32>> = Vec::new();
         let heap_cows: Vec<CowSlice<'_>>;
         let heap_vectors: Vec<&[f32]>;
@@ -269,15 +269,19 @@ impl TeeGuard for InMemoryTee {
             let len = input_ptrs.len();
             for (dest, &ptr) in stack_vectors[..len].iter_mut().zip(input_ptrs.iter()) {
                 match self.get_input_slice(ptr)? {
-                    CowSlice::Borrowed(slice) => *dest = slice,
+                    CowSlice::Borrowed(slice) => {
+                        dest.write(slice);
+                    }
                     CowSlice::Owned(vec) => {
                         heap_owned.push(vec);
                         let last = heap_owned.last().unwrap();
-                        *dest = unsafe { std::slice::from_raw_parts(last.as_ptr(), last.len()) };
+                        dest.write(unsafe {
+                            std::slice::from_raw_parts(last.as_ptr(), last.len())
+                        });
                     }
                 }
             }
-            &stack_vectors[..len]
+            unsafe { std::slice::from_raw_parts(stack_vectors.as_ptr() as *const &[f32], len) }
         } else {
             let mut cows = Vec::with_capacity(input_ptrs.len());
             for &ptr in input_ptrs {
