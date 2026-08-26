@@ -2,6 +2,10 @@
 
 ⚡ Performance-obsessed optimizations, learnings, and insights.
 
+## 2026-06-23 - [LLVM Strength Reduction and Idiomatic Arithmetic Operators]
+**Learning:** In Rust under `-C opt-level=3` (release mode), LLVM automatically performs strength reduction for constant power-of-two modulo, division, and alignment checks (e.g. converting `% 4` to `& 3`, `/ 4` to `>> 2`, and `.is_multiple_of(4)` to bitwise masking). Manually replacing standard idiomatic methods with explicit bitwise operators or shift expressions provides zero measurable performance gain while obscuring code intent and reducing readability.
+**Action:** Rely on standard, idiomatic Rust methods (like `.is_multiple_of(...)` or `/ 4`) for constant power-of-two arithmetic instead of manual bitwise operator micro-optimizations.
+
 ## 2026-06-22 - [MaybeUninit Stack Allocation for Hot Slice Buffers]
 **Learning:** In hot execution paths using hybrid stack-allocated reference buffers (e.g. `federated_averaging` and `InMemoryTee::execute_computation`), initializing a 64-element array with dummy slice references (`[&[] as &[f32]; 64]`) introduces unnecessary element assignments on every call entry. By replacing dummy initialization with `[std::mem::MaybeUninit::<&[f32]>::uninit(); 64]` and writing directly to `0..len` active elements via `.write(...)`, we completely eliminate array dummy element assignment overhead on function entry. This yields a ~4.7% execution speedup on low-latency aggregation calls (~45.9 ns).
 **Action:** Use `std::mem::MaybeUninit` for hybrid stack-allocated arrays of `Copy` reference types on hot call paths to avoid zero/dummy initialization overhead.
