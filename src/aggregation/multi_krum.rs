@@ -170,22 +170,39 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
         // We select the `neighbors + 1` smallest elements (index `neighbors` in 0-indexed terms).
         let score: f32 = if neighbors > 0 {
             row.select_nth_unstable_by(neighbors, |a, b| a.total_cmp(b));
-            // Optimized: Sum the `neighbors + 1` smallest distances using two independent accumulators (`sum0` and `sum1`).
-            // This eliminates the single-accumulator sequential addition dependency chain, allowing CPU floating-point
-            // execution units to perform additions concurrently in parallel and boosting candidate score calculation speed.
+            // Optimized: Sum the `neighbors + 1` smallest distances using 4-way unrolling with 4 independent
+            // accumulators (`sum0` through `sum3`) and multi-accumulator remainder matching.
+            // This breaks serial floating-point addition dependencies, allowing CPU execution units to process
+            // floating-point additions concurrently in parallel and boosting candidate score calculation speed.
             let sub = &row[..=neighbors];
             let mut sum0 = 0.0_f32;
             let mut sum1 = 0.0_f32;
-            let chunks = sub.chunks_exact(2);
+            let mut sum2 = 0.0_f32;
+            let mut sum3 = 0.0_f32;
+            let chunks = sub.chunks_exact(4);
             let rem = chunks.remainder();
             for chunk in chunks {
                 sum0 += chunk[0];
                 sum1 += chunk[1];
+                sum2 += chunk[2];
+                sum3 += chunk[3];
             }
-            if !rem.is_empty() {
-                sum0 += rem[0];
+            match rem.len() {
+                3 => {
+                    sum0 += rem[0];
+                    sum1 += rem[1];
+                    sum2 += rem[2];
+                }
+                2 => {
+                    sum0 += rem[0];
+                    sum1 += rem[1];
+                }
+                1 => {
+                    sum0 += rem[0];
+                }
+                _ => {}
             }
-            sum0 + sum1
+            (sum0 + sum1) + (sum2 + sum3)
         } else {
             0.0
         };
