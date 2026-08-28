@@ -104,14 +104,14 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
     // repeated `.as_ref()` method calls inside the distance precomputation and final vector cloning.
     // To avoid expensive heap allocations for typical small vector counts, we use a hybrid
     // stack-allocated buffer for up to 64 vectors and fall back to a heap-allocated Vec for larger counts.
-    // Zipping with a slice window of `stack_buf` completely avoids index bounds checks on initialization.
-    let mut stack_buf = [&[] as &[f32]; 64];
+    // Using `MaybeUninit` avoids zero/dummy initialization of all 64 elements on every function entry.
+    let mut stack_buf = [std::mem::MaybeUninit::<&[f32]>::uninit(); 64];
     let heap_buf: Vec<&[f32]>;
     let extracted: &[&[f32]] = if n <= 64 {
         for (dest, src) in stack_buf[..n].iter_mut().zip(vectors.iter()) {
-            *dest = src.as_ref();
+            dest.write(src.as_ref());
         }
-        &stack_buf[..n]
+        unsafe { std::slice::from_raw_parts(stack_buf.as_ptr() as *const &[f32], n) }
     } else {
         heap_buf = vectors.iter().map(|v| v.as_ref()).collect();
         &heap_buf

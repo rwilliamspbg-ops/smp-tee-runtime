@@ -54,6 +54,7 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
             // and enables parallel floating-point operations in registers, maximizing ILP and compiler vectorization.
             let mut chunks = remaining_vectors.chunks_exact(4);
             for chunk in chunks.by_ref() {
+                let chunk: &[&[f32]; 4] = chunk.try_into().unwrap();
                 let v0 = &chunk[0][..len];
                 let v1 = &chunk[1][..len];
                 let v2 = &chunk[2][..len];
@@ -156,6 +157,7 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
             // while maintaining strict alignment constraints and unleashing SIMD vectorization.
             let mut chunks = remaining_vectors.chunks_exact(4);
             for chunk in chunks.by_ref() {
+                let chunk: &[&[f32]; 4] = chunk.try_into().unwrap();
                 let v0 = &chunk[0][chunk_start..chunk_end];
                 let v1 = &chunk[1][chunk_start..chunk_end];
                 let v2 = &chunk[2][chunk_start..chunk_end];
