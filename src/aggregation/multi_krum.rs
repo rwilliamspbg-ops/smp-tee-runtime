@@ -182,6 +182,9 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
             let chunks = sub.chunks_exact(4);
             let rem = chunks.remainder();
             for chunk in chunks {
+                // Cast chunk slice into a fixed-size array reference `&[f32; 4]` to statically elide
+                // runtime bounds checks on `chunk[0]`, `chunk[1]`, `chunk[2]`, and `chunk[3]`.
+                let chunk: &[f32; 4] = chunk.try_into().unwrap();
                 sum0 += chunk[0];
                 sum1 += chunk[1];
                 sum2 += chunk[2];
