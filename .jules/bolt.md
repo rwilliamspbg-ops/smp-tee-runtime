@@ -2,6 +2,10 @@
 
 ⚡ Performance-obsessed optimizations, learnings, and insights.
 
+## 2026-06-24 - [Direct Borrowed Slice Lookup in TEE Computation Dispatch]
+**Learning:** In TEE dispatch interfaces (e.g. `InMemoryTee::execute_computation`), retrieving input memory slices by calling helper methods that return intermediate `CowSlice` enum variants introduces enum tagging, matching, and unwrapping overhead on every pointer lookup. By introducing a direct `get_borrowed_f32_slice` method that returns `Result<&[f32], TeeError>`, zero-copy aligned allocations bypass intermediate enum construction and matching. Furthermore, for heap fallback paths (> 64 inputs), collecting slice references directly into `Vec<&[f32]>` eliminates intermediate `Vec<CowSlice>` allocations. This yields a ~6.9% speedup on multi-client TEE computation benchmarks (reducing 50-client execution time from ~71.7 µs to ~66.3 µs).
+**Action:** When extracting zero-copy borrowed slices from memory allocations on hot paths, provide a direct slice lookup method that bypasses intermediate `Cow` or `CowSlice` enum construction and matching.
+
 ## 2026-06-23 - [LLVM Strength Reduction and Idiomatic Arithmetic Operators]
 **Learning:** In Rust under `-C opt-level=3` (release mode), LLVM automatically performs strength reduction for constant power-of-two modulo, division, and alignment checks (e.g. converting `% 4` to `& 3`, `/ 4` to `>> 2`, and `.is_multiple_of(4)` to bitwise masking). Manually replacing standard idiomatic methods with explicit bitwise operators or shift expressions provides zero measurable performance gain while obscuring code intent and reducing readability.
 **Action:** Rely on standard, idiomatic Rust methods (like `.is_multiple_of(...)` or `/ 4`) for constant power-of-two arithmetic instead of manual bitwise operator micro-optimizations.

@@ -71,24 +71,6 @@ impl BuildHasher for BuildFastHasher {
     }
 }
 
-/// A clone-on-write styled slice containing either borrowed or owned floating-point data.
-/// This enables zero-copy passing of contiguous floating-point data extracted directly from TEE allocations.
-#[derive(Debug, Clone)]
-pub enum CowSlice<'a> {
-    Borrowed(&'a [f32]),
-    Owned(Vec<f32>),
-}
-
-impl<'a> AsRef<[f32]> for CowSlice<'a> {
-    #[inline(always)]
-    fn as_ref(&self) -> &[f32] {
-        match self {
-            CowSlice::Borrowed(slice) => slice,
-            CowSlice::Owned(vec) => vec,
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AggregationAlgorithm {
     FederatedAveraging,
@@ -126,9 +108,8 @@ pub struct InMemoryTee {
 }
 
 impl InMemoryTee {
-    /// Extracts a highly-optimized zero-copy reference to the underlying allocation if aligned and on little-endian,
-    /// or decodes/fallback converts to an owned vector.
-    fn get_input_slice<'a>(&'a self, ptr: *const u8) -> Result<CowSlice<'a>, TeeError> {
+    #[inline(always)]
+    fn get_borrowed_f32_slice(&self, ptr: *const u8) -> Result<Option<&[f32]>, TeeError> {
         let bytes = self
             .allocations
             .get(&(ptr as usize))
@@ -142,21 +123,14 @@ impl InMemoryTee {
         #[cfg(target_endian = "little")]
         {
             let raw_ptr = bytes.as_ptr();
-            // Check if the memory alignment matches f32 (4 bytes).
-            // This is safe since heap-allocated vectors are always at least 8-byte aligned on modern architectures.
             if (raw_ptr as usize).is_multiple_of(std::mem::align_of::<f32>()) {
                 let slice =
                     unsafe { std::slice::from_raw_parts(raw_ptr as *const f32, bytes.len() / 4) };
-                return Ok(CowSlice::Borrowed(slice));
+                return Ok(Some(slice));
             }
         }
 
-        // Fallback for non-little-endian architectures or unaligned buffers
-        let values: Vec<f32> = bytes
-            .chunks_exact(4)
-            .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
-            .collect();
-        Ok(CowSlice::Owned(values))
+        Ok(None)
     }
 
     fn encode_vector(values: &[f32]) -> Vec<u8> {
@@ -263,38 +237,41 @@ impl TeeGuard for InMemoryTee {
         // destructor calls. Using `MaybeUninit` avoids dummy initialization of all 64 elements on every call.
         let mut stack_vectors = [std::mem::MaybeUninit::<&[f32]>::uninit(); 64];
         let mut heap_owned: Vec<Vec<f32>> = Vec::new();
-        let heap_cows: Vec<CowSlice<'_>>;
-        let heap_vectors: Vec<&[f32]>;
+        let mut heap_vectors: Vec<&[f32]>;
         let vectors: &[&[f32]] = if input_ptrs.len() <= 64 {
             let len = input_ptrs.len();
             for (dest, &ptr) in stack_vectors[..len].iter_mut().zip(input_ptrs.iter()) {
-                match self.get_input_slice(ptr)? {
-                    CowSlice::Borrowed(slice) => {
-                        dest.write(slice);
-                    }
-                    CowSlice::Owned(vec) => {
-                        heap_owned.push(vec);
-                        let last = heap_owned.last().unwrap();
-                        dest.write(unsafe {
-                            std::slice::from_raw_parts(last.as_ptr(), last.len())
-                        });
-                    }
+                if let Some(slice) = self.get_borrowed_f32_slice(ptr)? {
+                    dest.write(slice);
+                } else {
+                    let bytes = self.allocations.get(&(ptr as usize)).unwrap();
+                    let vec: Vec<f32> = bytes
+                        .chunks_exact(4)
+                        .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
+                        .collect();
+                    heap_owned.push(vec);
+                    let last = heap_owned.last().unwrap();
+                    dest.write(unsafe { std::slice::from_raw_parts(last.as_ptr(), last.len()) });
                 }
             }
             unsafe { std::slice::from_raw_parts(stack_vectors.as_ptr() as *const &[f32], len) }
         } else {
-            let mut cows = Vec::with_capacity(input_ptrs.len());
+            heap_vectors = Vec::with_capacity(input_ptrs.len());
             for &ptr in input_ptrs {
-                cows.push(self.get_input_slice(ptr)?);
+                if let Some(slice) = self.get_borrowed_f32_slice(ptr)? {
+                    heap_vectors.push(slice);
+                } else {
+                    let bytes = self.allocations.get(&(ptr as usize)).unwrap();
+                    let vec: Vec<f32> = bytes
+                        .chunks_exact(4)
+                        .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
+                        .collect();
+                    heap_owned.push(vec);
+                    let last = heap_owned.last().unwrap();
+                    heap_vectors
+                        .push(unsafe { std::slice::from_raw_parts(last.as_ptr(), last.len()) });
+                }
             }
-            heap_cows = cows;
-            heap_vectors = heap_cows
-                .iter()
-                .map(|c| match c {
-                    CowSlice::Borrowed(s) => *s,
-                    CowSlice::Owned(v) => v.as_slice(),
-                })
-                .collect();
             &heap_vectors
         };
 
