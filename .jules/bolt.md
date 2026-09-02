@@ -2,6 +2,10 @@
 
 ⚡ Performance-obsessed optimizations, learnings, and insights.
 
+## 2026-06-25 - [Direct Chunks Exact Zip Iteration in Squared L2 Distance]
+**Learning:** In hot unrolled loops like `squared_l2_distance` in Multi-Krum, creating mutable chunk iterator references via `.by_ref()` (e.g., `left_chunks.by_ref().zip(right_chunks.by_ref())`) introduces iterator state update overhead and re-borrowing indirection that hinders LLVM instruction scheduling and SIMD register allocation across loop iterations. By instead directly zipping `left.chunks_exact(8).zip(right.chunks_exact(8))` and calculating the remainder start offset statically via `(left.len() / 8) * 8` to slice `rem_l` and `rem_r` directly, we completely eliminate iterator state re-borrowing overhead. This yields a ~10.3% speedup on `multi_krum_large_50_clients` (reducing execution time from ~58.7 µs down to ~50.4 µs).
+**Action:** When zipping exact chunk iterators in unrolled reduction loops, avoid `.by_ref()` iterator state mutation and instead calculate the remainder start offset statically to slice remainder elements directly.
+
 ## 2026-06-24 - [Direct Borrowed Slice Lookup in TEE Computation Dispatch]
 **Learning:** In TEE dispatch interfaces (e.g. `InMemoryTee::execute_computation`), retrieving input memory slices by calling helper methods that return intermediate `CowSlice` enum variants introduces enum tagging, matching, and unwrapping overhead on every pointer lookup. By introducing a direct `get_borrowed_f32_slice` method that returns `Result<&[f32], TeeError>`, zero-copy aligned allocations bypass intermediate enum construction and matching. Furthermore, for heap fallback paths (> 64 inputs), collecting slice references directly into `Vec<&[f32]>` eliminates intermediate `Vec<CowSlice>` allocations. This yields a ~6.9% speedup on multi-client TEE computation benchmarks (reducing 50-client execution time from ~71.7 µs to ~66.3 µs).
 **Action:** When extracting zero-copy borrowed slices from memory allocations on hot paths, provide a direct slice lookup method that bypasses intermediate `Cow` or `CowSlice` enum construction and matching.
