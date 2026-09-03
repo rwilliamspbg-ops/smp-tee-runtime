@@ -109,7 +109,7 @@ pub struct InMemoryTee {
 
 impl InMemoryTee {
     #[inline(always)]
-    fn get_borrowed_f32_slice(&self, ptr: *const u8) -> Result<Option<&[f32]>, TeeError> {
+    fn get_borrowed_f32_slice(&self, ptr: *const u8) -> Result<(&[u8], Option<&[f32]>), TeeError> {
         let bytes = self
             .allocations
             .get(&(ptr as usize))
@@ -126,11 +126,11 @@ impl InMemoryTee {
             if (raw_ptr as usize).is_multiple_of(std::mem::align_of::<f32>()) {
                 let slice =
                     unsafe { std::slice::from_raw_parts(raw_ptr as *const f32, bytes.len() / 4) };
-                return Ok(Some(slice));
+                return Ok((bytes, Some(slice)));
             }
         }
 
-        Ok(None)
+        Ok((bytes, None))
     }
 
     fn encode_vector(values: &[f32]) -> Vec<u8> {
@@ -241,10 +241,10 @@ impl TeeGuard for InMemoryTee {
         let vectors: &[&[f32]] = if input_ptrs.len() <= 64 {
             let len = input_ptrs.len();
             for (dest, &ptr) in stack_vectors[..len].iter_mut().zip(input_ptrs.iter()) {
-                if let Some(slice) = self.get_borrowed_f32_slice(ptr)? {
+                let (bytes, slice) = self.get_borrowed_f32_slice(ptr)?;
+                if let Some(slice) = slice {
                     dest.write(slice);
                 } else {
-                    let bytes = self.allocations.get(&(ptr as usize)).unwrap();
                     let vec: Vec<f32> = bytes
                         .chunks_exact(4)
                         .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
@@ -258,10 +258,10 @@ impl TeeGuard for InMemoryTee {
         } else {
             heap_vectors = Vec::with_capacity(input_ptrs.len());
             for &ptr in input_ptrs {
-                if let Some(slice) = self.get_borrowed_f32_slice(ptr)? {
+                let (bytes, slice) = self.get_borrowed_f32_slice(ptr)?;
+                if let Some(slice) = slice {
                     heap_vectors.push(slice);
                 } else {
-                    let bytes = self.allocations.get(&(ptr as usize)).unwrap();
                     let vec: Vec<f32> = bytes
                         .chunks_exact(4)
                         .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
