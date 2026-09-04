@@ -46,6 +46,9 @@ fn squared_l2_distance(left: &[f32], right: &[f32]) -> f32 {
     // Handle any remaining elements when length is not a multiple of 8
     let rem_start = num_chunks * 8;
     let rem_l = &left[rem_start..];
+    if rem_l.is_empty() {
+        return sum;
+    }
     let rem_r = &right[rem_start..];
 
     let (rem2_l, rem2_r) = if rem_l.len() >= 4 {
