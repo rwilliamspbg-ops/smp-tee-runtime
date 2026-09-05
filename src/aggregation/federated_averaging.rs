@@ -59,10 +59,6 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                 let v1 = &chunk[1][..len];
                 let v2 = &chunk[2][..len];
                 let v3 = &chunk[3][..len];
-                assert_eq!(v0.len(), len);
-                assert_eq!(v1.len(), len);
-                assert_eq!(v2.len(), len);
-                assert_eq!(v3.len(), len);
                 for i in 0..len {
                     // Optimized: Group additions as `(v0[i] + v1[i]) + (v2[i] + v3[i])` to reduce
                     // instruction dependency chain latency from 4 sequential additions to 3.
@@ -79,9 +75,6 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                     let v0 = &remainder[0][..len];
                     let v1 = &remainder[1][..len];
                     let v2 = &remainder[2][..len];
-                    assert_eq!(v0.len(), len);
-                    assert_eq!(v1.len(), len);
-                    assert_eq!(v2.len(), len);
                     for i in 0..len {
                         acc_slice[i] += (v0[i] + v1[i]) + v2[i];
                     }
@@ -89,15 +82,12 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                 2 => {
                     let v0 = &remainder[0][..len];
                     let v1 = &remainder[1][..len];
-                    assert_eq!(v0.len(), len);
-                    assert_eq!(v1.len(), len);
                     for i in 0..len {
                         acc_slice[i] += v0[i] + v1[i];
                     }
                 }
                 1 => {
                     let v0 = &remainder[0][..len];
-                    assert_eq!(v0.len(), len);
                     for i in 0..len {
                         acc_slice[i] += v0[i];
                     }
@@ -112,9 +102,6 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                     let v0 = &remaining_vectors[0][..len];
                     let v1 = &remaining_vectors[1][..len];
                     let v2 = &remaining_vectors[2][..len];
-                    assert_eq!(v0.len(), len);
-                    assert_eq!(v1.len(), len);
-                    assert_eq!(v2.len(), len);
                     for i in 0..len {
                         acc_slice[i] += (v0[i] + v1[i]) + v2[i];
                     }
@@ -122,15 +109,12 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                 2 => {
                     let v0 = &remaining_vectors[0][..len];
                     let v1 = &remaining_vectors[1][..len];
-                    assert_eq!(v0.len(), len);
-                    assert_eq!(v1.len(), len);
                     for i in 0..len {
                         acc_slice[i] += v0[i] + v1[i];
                     }
                 }
                 1 => {
                     let v0 = &remaining_vectors[0][..len];
-                    assert_eq!(v0.len(), len);
                     for i in 0..len {
                         acc_slice[i] += v0[i];
                     }
@@ -150,7 +134,6 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
             };
             let chunk_len = chunk_end - chunk_start;
             let acc_chunk = &mut acc_slice[chunk_start..chunk_end];
-            assert_eq!(acc_chunk.len(), chunk_len);
 
             // Optimized: Process remaining vectors in chunks of 4.
             // This reduces writeback overhead and cache traffic on `acc_chunk` by up to 75% inside the hot loop,
@@ -162,10 +145,6 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                 let v1 = &chunk[1][chunk_start..chunk_end];
                 let v2 = &chunk[2][chunk_start..chunk_end];
                 let v3 = &chunk[3][chunk_start..chunk_end];
-                assert_eq!(v0.len(), chunk_len);
-                assert_eq!(v1.len(), chunk_len);
-                assert_eq!(v2.len(), chunk_len);
-                assert_eq!(v3.len(), chunk_len);
                 for i in 0..chunk_len {
                     // Optimized: Group additions as `(v0[i] + v1[i]) + (v2[i] + v3[i])` to reduce
                     // instruction dependency chain latency from 4 sequential additions to 3.
@@ -182,9 +161,6 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                     let v0 = &remainder[0][chunk_start..chunk_end];
                     let v1 = &remainder[1][chunk_start..chunk_end];
                     let v2 = &remainder[2][chunk_start..chunk_end];
-                    assert_eq!(v0.len(), chunk_len);
-                    assert_eq!(v1.len(), chunk_len);
-                    assert_eq!(v2.len(), chunk_len);
                     for i in 0..chunk_len {
                         acc_chunk[i] += (v0[i] + v1[i]) + v2[i];
                     }
@@ -192,15 +168,12 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                 2 => {
                     let v0 = &remainder[0][chunk_start..chunk_end];
                     let v1 = &remainder[1][chunk_start..chunk_end];
-                    assert_eq!(v0.len(), chunk_len);
-                    assert_eq!(v1.len(), chunk_len);
                     for i in 0..chunk_len {
                         acc_chunk[i] += v0[i] + v1[i];
                     }
                 }
                 1 => {
                     let v0 = &remainder[0][chunk_start..chunk_end];
-                    assert_eq!(v0.len(), chunk_len);
                     for i in 0..chunk_len {
                         acc_chunk[i] += v0[i];
                     }
