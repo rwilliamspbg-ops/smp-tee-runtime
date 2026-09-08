@@ -26,7 +26,9 @@ impl XdpIngress {
         // specialization in `FromIterator` to allocate exact capacity in a single operation
         // without manual capacity calculation or `extend` overhead, yielding a ~6% speedup.
         if remainder.is_empty() {
-            chunks_exact.map(|chunk| PacketView { data: chunk }).collect()
+            chunks_exact
+                .map(|chunk| PacketView { data: chunk })
+                .collect()
         } else {
             let mut packets = Vec::with_capacity(num_chunks + 1);
             packets.extend(chunks_exact.map(|chunk| PacketView { data: chunk }));
