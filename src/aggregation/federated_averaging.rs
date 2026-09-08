@@ -126,36 +126,44 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
         // Loop tiling/blocking for large dimensions: accumulate in small chunks (e.g., 1024 elements)
         // to keep data in L1/L2 cache and maximize SIMD auto-vectorization across multiple client vectors.
         const CHUNK_SIZE: usize = 1024;
+
+        // Optimized: Hoist remaining_vectors chunking and array conversions outside of the outer
+        // dimension tiling loop. This avoids re-creating the chunk iterator and performing repeated `try_into()`
+        // array conversions on every dimension tile step.
+        let chunks_exact = remaining_vectors.chunks_exact(4);
+        let remainder = chunks_exact.remainder();
+        let num_chunks = chunks_exact.len();
+
+        let mut stack_chunks = [std::mem::MaybeUninit::<&[&[f32]; 4]>::uninit(); 16];
+        let heap_chunks: Vec<&[&[f32]; 4]>;
+        let vector_chunks: &[&[&[f32]; 4]] = if num_chunks <= 16 {
+            for (dest, src) in stack_chunks[..num_chunks].iter_mut().zip(chunks_exact) {
+                dest.write(src.try_into().unwrap());
+            }
+            unsafe {
+                std::slice::from_raw_parts(stack_chunks.as_ptr() as *const &[&[f32]; 4], num_chunks)
+            }
+        } else {
+            heap_chunks = chunks_exact.map(|c| c.try_into().unwrap()).collect();
+            &heap_chunks
+        };
+
         for chunk_start in (0..len).step_by(CHUNK_SIZE) {
-            let chunk_end = if chunk_start + CHUNK_SIZE > len {
-                len
-            } else {
-                chunk_start + CHUNK_SIZE
-            };
+            let chunk_end = (chunk_start + CHUNK_SIZE).min(len);
             let chunk_len = chunk_end - chunk_start;
             let acc_chunk = &mut acc_slice[chunk_start..chunk_end];
 
-            // Optimized: Process remaining vectors in chunks of 4.
-            // This reduces writeback overhead and cache traffic on `acc_chunk` by up to 75% inside the hot loop,
-            // while maintaining strict alignment constraints and unleashing SIMD vectorization.
-            let mut chunks = remaining_vectors.chunks_exact(4);
-            for chunk in chunks.by_ref() {
-                let chunk: &[&[f32]; 4] = chunk.try_into().unwrap();
+            for &chunk in vector_chunks {
                 let v0 = &chunk[0][chunk_start..chunk_end];
                 let v1 = &chunk[1][chunk_start..chunk_end];
                 let v2 = &chunk[2][chunk_start..chunk_end];
                 let v3 = &chunk[3][chunk_start..chunk_end];
                 for i in 0..chunk_len {
-                    // Optimized: Group additions as `(v0[i] + v1[i]) + (v2[i] + v3[i])` to reduce
-                    // instruction dependency chain latency from 4 sequential additions to 3.
-                    // This allows the CPU's execution units to compute `v0 + v1` and `v2 + v3` in parallel,
-                    // maximizing Instruction-Level Parallelism (ILP) and enabling optimal auto-vectorization.
+                    // Group additions as `(v0[i] + v1[i]) + (v2[i] + v3[i])` to minimize instruction latency.
                     acc_chunk[i] += (v0[i] + v1[i]) + (v2[i] + v3[i]);
                 }
             }
-            // Optimized: Replace the remainder loop with an explicit match statement
-            // on the remainder length to fuse additions into a single loop, reducing writeback traffic.
-            let remainder = chunks.remainder();
+
             match remainder.len() {
                 3 => {
                     let v0 = &remainder[0][chunk_start..chunk_end];
