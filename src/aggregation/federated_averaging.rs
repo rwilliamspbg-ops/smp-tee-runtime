@@ -45,15 +45,13 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
     let remaining_vectors = &extracted[1..];
 
     if len <= 1024 {
-        // Fast path for small dimensions: direct iteration to avoid chunking and branch overhead
-        // Assert slice lengths to completely eliminate runtime bounds checks and enable full auto-vectorization.
-        assert_eq!(acc_slice.len(), len);
+        // Fast path for small dimensions: direct iteration to avoid chunking and branch overhead.
         if remaining_vectors.len() >= 4 {
             // Optimized: Process remaining vectors in chunks of 4.
-            // This significantly reduces memory bandwidth/traffic on `acc_slice` (reading and writing to it 75% fewer times)
-            // and enables parallel floating-point operations in registers, maximizing ILP and compiler vectorization.
-            let mut chunks = remaining_vectors.chunks_exact(4);
-            for chunk in chunks.by_ref() {
+            // Avoid `.by_ref()` iterator indirection and tautological assertions to maximize SIMD instruction scheduling.
+            let chunks = remaining_vectors.chunks_exact(4);
+            let remainder = chunks.remainder();
+            for chunk in chunks {
                 let chunk: &[&[f32]; 4] = chunk.try_into().unwrap();
                 let v0 = &chunk[0][..len];
                 let v1 = &chunk[1][..len];
@@ -67,9 +65,6 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                     acc_slice[i] += (v0[i] + v1[i]) + (v2[i] + v3[i]);
                 }
             }
-            // Optimized: Replace the remainder loop with an explicit match statement
-            // on the remainder length to fuse additions into a single loop, reducing memory write traffic.
-            let remainder = chunks.remainder();
             match remainder.len() {
                 3 => {
                     let v0 = &remainder[0][..len];
