@@ -2,6 +2,10 @@
 
 ⚡ Performance-obsessed optimizations, learnings, and insights.
 
+## 2026-06-30 - [Unsoundness of Transmuting Vec<f32> to Vec<u8> via Vec::from_raw_parts]
+**Learning:** Transmuting a `Vec<f32>` into a `Vec<u8>` using `Vec::from_raw_parts` violates Rust's allocator safety contract because `Vec<T>` deallocates memory using `Layout::from_size_align(cap * size_of::<T>(), align_of::<T>())`. `f32` has alignment 4 while `u8` has alignment 1. Passing a mismatched alignment layout to `dealloc` when `Vec<u8>` is dropped triggers Undefined Behavior.
+**Action:** Never transmute `Vec<T>` to `Vec<U>` via `Vec::from_raw_parts` if `T` and `U` have different alignments.
+
 ## 2026-06-29 - [Elimination of .by_ref() Iterator Indirection in Chunked Accumulation]
 **Learning:** In chunked iteration loops (e.g. `remaining_vectors.chunks_exact(4)` in `federated_averaging`), using `for chunk in chunks.by_ref()` forces the loop to iterate through a mutable reference `&mut ChunksExact`, introducing iterator state re-borrowing indirection and method dispatch overhead. Because `ChunksExact::remainder()` returns the remainder slice of the original input regardless of iteration state, taking `let remainder = chunks.remainder();` prior to `for chunk in chunks` allows consuming `ChunksExact` directly by value. This completely elides iterator re-borrowing indirection, yielding a ~18% speedup on small-dimension federated averaging (~48.3 ns) and up to ~47.5% end-to-end speedup on TEE computation dispatch.
 **Action:** Always extract `chunks.remainder()` before entering `for chunk in chunks` loops to avoid `.by_ref()` iterator indirection.

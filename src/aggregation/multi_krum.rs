@@ -159,7 +159,11 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
         }
     }
 
-    let mut best: Option<(usize, f32)> = None;
+    // Optimized: Replace `Option<(usize, f32)>` tuple matching with primitive scalar tracking
+    // (`best_idx` and `min_score`) to eliminate Option discriminant checks, tuple creation/unpacking,
+    // and pattern matching in the candidate selection loop.
+    let mut best_idx = 0;
+    let mut min_score = f32::INFINITY;
 
     // Optimized: Use `distance_matrix.chunks_exact_mut(n).enumerate()` to iterate over rows in-place.
     // This completely elides `i * n` row multiplication and bounds checks on `distance_matrix[row_start..row_end]`.
@@ -213,13 +217,13 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
             0.0
         };
 
-        match best {
-            Some((_, best_score)) if best_score <= score => {}
-            _ => best = Some((i, score)),
+        if score < min_score {
+            min_score = score;
+            best_idx = i;
         }
     }
 
-    best.map(|(idx, _)| extracted[idx].to_vec())
+    Some(extracted[best_idx].to_vec())
 }
 
 #[cfg(test)]
