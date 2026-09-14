@@ -199,13 +199,19 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
             }
             match rem.len() {
                 3 => {
-                    sum0 += rem[0];
-                    sum1 += rem[1];
-                    sum2 += rem[2];
+                    // Convert remainder slice to fixed-size array reference `&[f32; 3]` to statically
+                    // elide runtime bounds checks on `r[0]`, `r[1]`, and `r[2]`.
+                    let r: &[f32; 3] = rem.try_into().unwrap();
+                    sum0 += r[0];
+                    sum1 += r[1];
+                    sum2 += r[2];
                 }
                 2 => {
-                    sum0 += rem[0];
-                    sum1 += rem[1];
+                    // Convert remainder slice to fixed-size array reference `&[f32; 2]` to statically
+                    // elide runtime bounds checks on `r[0]` and `r[1]`.
+                    let r: &[f32; 2] = rem.try_into().unwrap();
+                    sum0 += r[0];
+                    sum1 += r[1];
                 }
                 1 => {
                     sum0 += rem[0];

@@ -67,16 +67,22 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
             }
             match remainder.len() {
                 3 => {
-                    let v0 = &remainder[0][..len];
-                    let v1 = &remainder[1][..len];
-                    let v2 = &remainder[2][..len];
+                    // Convert remainder slice to fixed-size array reference `&[&[f32]; 3]` to statically
+                    // elide runtime bounds checks on `rem[0]`, `rem[1]`, and `rem[2]`.
+                    let rem: &[&[f32]; 3] = remainder.try_into().unwrap();
+                    let v0 = &rem[0][..len];
+                    let v1 = &rem[1][..len];
+                    let v2 = &rem[2][..len];
                     for i in 0..len {
                         acc_slice[i] += (v0[i] + v1[i]) + v2[i];
                     }
                 }
                 2 => {
-                    let v0 = &remainder[0][..len];
-                    let v1 = &remainder[1][..len];
+                    // Convert remainder slice to fixed-size array reference `&[&[f32]; 2]` to statically
+                    // elide runtime bounds checks on `rem[0]` and `rem[1]`.
+                    let rem: &[&[f32]; 2] = remainder.try_into().unwrap();
+                    let v0 = &rem[0][..len];
+                    let v1 = &rem[1][..len];
                     for i in 0..len {
                         acc_slice[i] += v0[i] + v1[i];
                     }
@@ -94,16 +100,22 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
             // on the remaining_vectors length to fuse additions into a single loop.
             match remaining_vectors.len() {
                 3 => {
-                    let v0 = &remaining_vectors[0][..len];
-                    let v1 = &remaining_vectors[1][..len];
-                    let v2 = &remaining_vectors[2][..len];
+                    // Convert remaining_vectors slice to fixed-size array reference `&[&[f32]; 3]` to statically
+                    // elide runtime bounds checks on `rem[0]`, `rem[1]`, and `rem[2]`.
+                    let rem: &[&[f32]; 3] = remaining_vectors.try_into().unwrap();
+                    let v0 = &rem[0][..len];
+                    let v1 = &rem[1][..len];
+                    let v2 = &rem[2][..len];
                     for i in 0..len {
                         acc_slice[i] += (v0[i] + v1[i]) + v2[i];
                     }
                 }
                 2 => {
-                    let v0 = &remaining_vectors[0][..len];
-                    let v1 = &remaining_vectors[1][..len];
+                    // Convert remaining_vectors slice to fixed-size array reference `&[&[f32]; 2]` to statically
+                    // elide runtime bounds checks on `rem[0]` and `rem[1]`.
+                    let rem: &[&[f32]; 2] = remaining_vectors.try_into().unwrap();
+                    let v0 = &rem[0][..len];
+                    let v1 = &rem[1][..len];
                     for i in 0..len {
                         acc_slice[i] += v0[i] + v1[i];
                     }
@@ -161,16 +173,22 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
 
             match remainder.len() {
                 3 => {
-                    let v0 = &remainder[0][chunk_start..chunk_end];
-                    let v1 = &remainder[1][chunk_start..chunk_end];
-                    let v2 = &remainder[2][chunk_start..chunk_end];
+                    // Convert remainder slice to fixed-size array reference `&[&[f32]; 3]` to statically
+                    // elide runtime bounds checks on `rem[0]`, `rem[1]`, and `rem[2]`.
+                    let rem: &[&[f32]; 3] = remainder.try_into().unwrap();
+                    let v0 = &rem[0][chunk_start..chunk_end];
+                    let v1 = &rem[1][chunk_start..chunk_end];
+                    let v2 = &rem[2][chunk_start..chunk_end];
                     for i in 0..chunk_len {
                         acc_chunk[i] += (v0[i] + v1[i]) + v2[i];
                     }
                 }
                 2 => {
-                    let v0 = &remainder[0][chunk_start..chunk_end];
-                    let v1 = &remainder[1][chunk_start..chunk_end];
+                    // Convert remainder slice to fixed-size array reference `&[&[f32]; 2]` to statically
+                    // elide runtime bounds checks on `rem[0]` and `rem[1]`.
+                    let rem: &[&[f32]; 2] = remainder.try_into().unwrap();
+                    let v0 = &rem[0][chunk_start..chunk_end];
+                    let v1 = &rem[1][chunk_start..chunk_end];
                     for i in 0..chunk_len {
                         acc_chunk[i] += v0[i] + v1[i];
                     }
