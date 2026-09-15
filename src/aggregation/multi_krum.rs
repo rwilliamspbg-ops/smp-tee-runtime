@@ -16,9 +16,17 @@ fn squared_l2_distance(left: &[f32], right: &[f32]) -> f32 {
     let mut sum6 = 0.0_f32;
     let mut sum7 = 0.0_f32;
 
-    let num_chunks = left.len() / 8;
+    let left_chunks = left.chunks_exact(8);
+    let right_chunks = right.chunks_exact(8);
 
-    for (cl, cr) in left.chunks_exact(8).zip(right.chunks_exact(8)) {
+    // Optimized: Extract remainder slices directly from `ChunksExact::remainder()`
+    // prior to consuming chunk iterators in the unrolled loop.
+    // This avoids arithmetic division/multiplication (`left.len() / 8` and `num_chunks * 8`)
+    // and range indexing branches (`&left[rem_start..]`).
+    let rem_l = left_chunks.remainder();
+    let rem_r = right_chunks.remainder();
+
+    for (cl, cr) in left_chunks.zip(right_chunks) {
         let cl: &[f32; 8] = cl.try_into().unwrap();
         let cr: &[f32; 8] = cr.try_into().unwrap();
 
@@ -43,13 +51,9 @@ fn squared_l2_distance(left: &[f32], right: &[f32]) -> f32 {
 
     let mut sum = sum0 + sum1 + sum2 + sum3 + sum4 + sum5 + sum6 + sum7;
 
-    // Handle any remaining elements when length is not a multiple of 8
-    let rem_start = num_chunks * 8;
-    let rem_l = &left[rem_start..];
     if rem_l.is_empty() {
         return sum;
     }
-    let rem_r = &right[rem_start..];
 
     let (rem2_l, rem2_r) = if rem_l.len() >= 4 {
         let cl: &[f32; 4] = rem_l[..4].try_into().unwrap();
