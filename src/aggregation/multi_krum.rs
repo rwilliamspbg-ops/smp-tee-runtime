@@ -125,7 +125,7 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
     };
 
     let dimension = extracted[0].len();
-    if extracted.iter().any(|v| v.len() != dimension) {
+    if extracted[1..].iter().any(|v| v.len() != dimension) {
         return None;
     }
 
@@ -203,11 +203,13 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
             }
             match rem.len() {
                 3 => {
+                    let rem: &[f32; 3] = rem.try_into().unwrap();
                     sum0 += rem[0];
                     sum1 += rem[1];
                     sum2 += rem[2];
                 }
                 2 => {
+                    let rem: &[f32; 2] = rem.try_into().unwrap();
                     sum0 += rem[0];
                     sum1 += rem[1];
                 }
