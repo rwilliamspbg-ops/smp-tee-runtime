@@ -26,7 +26,7 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
     };
 
     let dimension = extracted[0].len();
-    if extracted.iter().any(|v| v.len() != dimension) {
+    if extracted[1..].iter().any(|v| v.len() != dimension) {
         return None;
     }
 
