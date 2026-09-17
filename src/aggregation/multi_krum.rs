@@ -186,43 +186,61 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
             // This breaks serial floating-point addition dependencies, allowing CPU execution units to process
             // floating-point additions concurrently in parallel and boosting candidate score calculation speed.
             let sub = &row[..=neighbors];
-            let mut sum0 = 0.0_f32;
-            let mut sum1 = 0.0_f32;
-            let mut sum2 = 0.0_f32;
-            let mut sum3 = 0.0_f32;
-            let chunks = sub.chunks_exact(4);
-            let rem = chunks.remainder();
-            for chunk in chunks {
-                // Cast chunk slice into a fixed-size array reference `&[f32; 4]` to statically elide
-                // runtime bounds checks on `chunk[0]`, `chunk[1]`, `chunk[2]`, and `chunk[3]`.
-                let chunk: &[f32; 4] = chunk.try_into().unwrap();
-                sum0 += chunk[0];
-                sum1 += chunk[1];
-                sum2 += chunk[2];
-                sum3 += chunk[3];
-            }
-            match rem.len() {
-                3 => {
-                    // Convert remainder slice to fixed-size array reference `&[f32; 3]` to statically
-                    // elide runtime bounds checks on `r[0]`, `r[1]`, and `r[2]`.
-                    let r: &[f32; 3] = rem.try_into().unwrap();
-                    sum0 += r[0];
-                    sum1 += r[1];
-                    sum2 += r[2];
-                }
+            // Optimized: Fast path for small neighbor counts (sub.len() <= 3).
+            // Directly matching on sub.len() elides chunk iterator creation,
+            // slice conversion, and remainder matching for small K settings.
+            match sub.len() {
+                1 => sub[0],
                 2 => {
-                    // Convert remainder slice to fixed-size array reference `&[f32; 2]` to statically
-                    // elide runtime bounds checks on `r[0]` and `r[1]`.
-                    let r: &[f32; 2] = rem.try_into().unwrap();
-                    sum0 += r[0];
-                    sum1 += r[1];
+                    let r: &[f32; 2] = sub.try_into().unwrap();
+                    r[0] + r[1]
                 }
-                1 => {
-                    sum0 += rem[0];
+                3 => {
+                    let r: &[f32; 3] = sub.try_into().unwrap();
+                    (r[0] + r[1]) + r[2]
                 }
-                _ => {}
+                _ => {
+                    // For sub.len() >= 4, sum using 4-way unrolling with 4 independent
+                    // accumulators (`sum0` through `sum3`) and multi-accumulator remainder matching.
+                    let mut sum0 = 0.0_f32;
+                    let mut sum1 = 0.0_f32;
+                    let mut sum2 = 0.0_f32;
+                    let mut sum3 = 0.0_f32;
+                    let chunks = sub.chunks_exact(4);
+                    let rem = chunks.remainder();
+                    for chunk in chunks {
+                        // Cast chunk slice into a fixed-size array reference `&[f32; 4]` to statically elide
+                        // runtime bounds checks on `chunk[0]`, `chunk[1]`, `chunk[2]`, and `chunk[3]`.
+                        let chunk: &[f32; 4] = chunk.try_into().unwrap();
+                        sum0 += chunk[0];
+                        sum1 += chunk[1];
+                        sum2 += chunk[2];
+                        sum3 += chunk[3];
+                    }
+                    match rem.len() {
+                        3 => {
+                            // Convert remainder slice to fixed-size array reference `&[f32; 3]` to statically
+                            // elide runtime bounds checks on `r[0]`, `r[1]`, and `r[2]`.
+                            let r: &[f32; 3] = rem.try_into().unwrap();
+                            sum0 += r[0];
+                            sum1 += r[1];
+                            sum2 += r[2];
+                        }
+                        2 => {
+                            // Convert remainder slice to fixed-size array reference `&[f32; 2]` to statically
+                            // elide runtime bounds checks on `r[0]` and `r[1]`.
+                            let r: &[f32; 2] = rem.try_into().unwrap();
+                            sum0 += r[0];
+                            sum1 += r[1];
+                        }
+                        1 => {
+                            sum0 += rem[0];
+                        }
+                        _ => {}
+                    }
+                    (sum0 + sum1) + (sum2 + sum3)
+                }
             }
-            (sum0 + sum1) + (sum2 + sum3)
         } else {
             0.0
         };
