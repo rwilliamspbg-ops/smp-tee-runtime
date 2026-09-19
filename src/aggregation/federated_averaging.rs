@@ -96,38 +96,41 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                 _ => {}
             }
         } else {
-            // Optimized: Replace the fallback loop with an explicit match statement
-            // on the remaining_vectors length to fuse additions into a single loop.
+            // Optimized: Fuse addition and normalization into a single pass when remaining_vectors.len() < 4.
+            // This avoids a second pass over memory (`acc_slice`) for normalization.
+            let denom = extracted.len() as f32;
+            let inv_denom = 1.0_f32 / denom;
             match remaining_vectors.len() {
                 3 => {
-                    // Convert remaining_vectors slice to fixed-size array reference `&[&[f32]; 3]` to statically
-                    // elide runtime bounds checks on `rem[0]`, `rem[1]`, and `rem[2]`.
                     let rem: &[&[f32]; 3] = remaining_vectors.try_into().unwrap();
                     let v0 = &rem[0][..len];
                     let v1 = &rem[1][..len];
                     let v2 = &rem[2][..len];
                     for i in 0..len {
-                        acc_slice[i] += (v0[i] + v1[i]) + v2[i];
+                        acc_slice[i] = (acc_slice[i] + (v0[i] + v1[i]) + v2[i]) * inv_denom;
                     }
                 }
                 2 => {
-                    // Convert remaining_vectors slice to fixed-size array reference `&[&[f32]; 2]` to statically
-                    // elide runtime bounds checks on `rem[0]` and `rem[1]`.
                     let rem: &[&[f32]; 2] = remaining_vectors.try_into().unwrap();
                     let v0 = &rem[0][..len];
                     let v1 = &rem[1][..len];
                     for i in 0..len {
-                        acc_slice[i] += v0[i] + v1[i];
+                        acc_slice[i] = (acc_slice[i] + v0[i] + v1[i]) * inv_denom;
                     }
                 }
                 1 => {
                     let v0 = &remaining_vectors[0][..len];
                     for i in 0..len {
-                        acc_slice[i] += v0[i];
+                        acc_slice[i] = (acc_slice[i] + v0[i]) * inv_denom;
                     }
                 }
-                _ => {}
+                _ => {
+                    for val in acc_slice.iter_mut() {
+                        *val *= inv_denom;
+                    }
+                }
             }
+            return Some(acc);
         }
     } else {
         // Loop tiling/blocking for large dimensions: accumulate in small chunks (e.g., 1024 elements)
@@ -220,6 +223,28 @@ mod tests {
     fn federated_averaging_returns_mean() {
         let avg = federated_averaging(&[vec![1.0, 2.0], vec![3.0, 4.0], vec![5.0, 6.0]]).unwrap();
         assert_eq!(avg, vec![3.0, 4.0]);
+    }
+
+    #[test]
+    fn federated_averaging_4_and_5_clients() {
+        let inputs4 = vec![
+            vec![1.0, 2.0],
+            vec![3.0, 4.0],
+            vec![5.0, 6.0],
+            vec![7.0, 8.0],
+        ];
+        let avg4 = federated_averaging(&inputs4).unwrap();
+        assert_eq!(avg4, vec![4.0, 5.0]);
+
+        let inputs5 = vec![
+            vec![1.0, 2.0],
+            vec![2.0, 3.0],
+            vec![3.0, 4.0],
+            vec![4.0, 5.0],
+            vec![5.0, 6.0],
+        ];
+        let avg5 = federated_averaging(&inputs5).unwrap();
+        assert_eq!(avg5, vec![3.0, 4.0]);
     }
 
     #[test]
