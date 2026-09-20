@@ -158,6 +158,9 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
             &heap_chunks
         };
 
+        let denom = extracted.len() as f32;
+        let inv_denom = 1.0_f32 / denom;
+
         for chunk_start in (0..len).step_by(CHUNK_SIZE) {
             let chunk_end = (chunk_start + CHUNK_SIZE).min(len);
             let chunk_len = chunk_end - chunk_start;
@@ -204,7 +207,14 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                 }
                 _ => {}
             }
+
+            // Normalize `acc_chunk` immediately while it is warm in L1 cache.
+            // This eliminates a separate full memory pass over `acc_slice` after tiling.
+            for val in acc_chunk.iter_mut() {
+                *val *= inv_denom;
+            }
         }
+        return Some(acc);
     }
 
     let denom = extracted.len() as f32;
