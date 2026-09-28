@@ -88,7 +88,10 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                     }
                 }
                 1 => {
-                    let v0 = &remainder[0][..len];
+                    // Convert remainder slice to fixed-size array reference `&[&[f32]; 1]` to statically
+                    // elide runtime bounds checks on `rem[0]`.
+                    let rem: &[&[f32]; 1] = remainder.try_into().unwrap();
+                    let v0 = &rem[0][..len];
                     for i in 0..len {
                         acc_slice[i] += v0[i];
                     }
@@ -119,7 +122,8 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                     }
                 }
                 1 => {
-                    let v0 = &remaining_vectors[0][..len];
+                    let rem: &[&[f32]; 1] = remaining_vectors.try_into().unwrap();
+                    let v0 = &rem[0][..len];
                     for i in 0..len {
                         acc_slice[i] = (acc_slice[i] + v0[i]) * inv_denom;
                     }
@@ -200,7 +204,10 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                     }
                 }
                 1 => {
-                    let v0 = &remainder[0][chunk_start..chunk_end];
+                    // Convert remainder slice to fixed-size array reference `&[&[f32]; 1]` to statically
+                    // elide runtime bounds checks on `rem[0]`.
+                    let rem: &[&[f32]; 1] = remainder.try_into().unwrap();
+                    let v0 = &rem[0][chunk_start..chunk_end];
                     for i in 0..chunk_len {
                         acc_chunk[i] += v0[i];
                     }
