@@ -231,7 +231,10 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
                         sum1 += r[1];
                     }
                     1 => {
-                        sum0 += rem[0];
+                        // Convert remainder slice to fixed-size array reference `&[f32; 1]` to statically
+                        // elide runtime bounds checks on `r[0]`.
+                        let r: &[f32; 1] = rem.try_into().unwrap();
+                        sum0 += r[0];
                     }
                     _ => {}
                 }
