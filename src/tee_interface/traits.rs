@@ -214,6 +214,13 @@ impl TeeGuard for InMemoryTee {
             return Err(TeeError::InvalidInput("empty inputs"));
         }
 
+        // Early validation: Fail fast for invalid Multi-Krum batch sizes before performing memory lookups.
+        if let AggregationAlgorithm::MultiKrum { byzantine_tolerance } = params.algorithm {
+            if input_ptrs.len() < 2 * byzantine_tolerance + 3 {
+                return Err(TeeError::InvalidInput("invalid multi-krum input"));
+            }
+        }
+
         // Optimized: Introduce a single-pointer fast path for Federated Averaging.
         // Instead of converting bytes to f32 vectors, running averaging, cloning, and converting
         // back to bytes, we directly return a cloned copy of the source vector bytes.
