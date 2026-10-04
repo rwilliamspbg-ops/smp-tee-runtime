@@ -196,6 +196,10 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
                 let r: &[f32; 3] = sub.try_into().unwrap();
                 (r[0] + r[1]) + r[2]
             }
+            4 => {
+                let r: &[f32; 4] = sub.try_into().unwrap();
+                (r[0] + r[1]) + (r[2] + r[3])
+            }
             _ => {
                 // For sub.len() >= 4, sum using 4-way unrolling with 4 independent
                 // accumulators (`sum0` through `sum3`) and multi-accumulator remainder matching.

@@ -25,15 +25,15 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
         &heap_buf
     };
 
+    // Optimized: If there is only one client vector to average, we can return a cloned copy of it immediately.
+    // This completely bypasses dimension checks, addition loops, bounds-check/assertion logic, and division/normalization multiplication.
+    if extracted.len() == 1 {
+        return Some(extracted[0].to_vec());
+    }
+
     let dimension = extracted[0].len();
     if extracted[1..].iter().any(|v| v.len() != dimension) {
         return None;
-    }
-
-    // Optimized: If there is only one client vector to average, we can return a cloned copy of it immediately.
-    // This completely bypasses any addition loops, bounds-check/assertion logic, and division/normalization multiplication.
-    if extracted.len() == 1 {
-        return Some(extracted[0].to_vec());
     }
 
     // Optimized: Initialize `acc` directly with a cloned copy of the first vector
