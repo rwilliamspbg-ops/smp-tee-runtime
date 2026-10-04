@@ -215,7 +215,10 @@ impl TeeGuard for InMemoryTee {
         }
 
         // Early validation: Fail fast for invalid Multi-Krum batch sizes before performing memory lookups.
-        if let AggregationAlgorithm::MultiKrum { byzantine_tolerance } = params.algorithm {
+        if let AggregationAlgorithm::MultiKrum {
+            byzantine_tolerance,
+        } = params.algorithm
+        {
             if input_ptrs.len() < 2 * byzantine_tolerance + 3 {
                 return Err(TeeError::InvalidInput("invalid multi-krum input"));
             }
