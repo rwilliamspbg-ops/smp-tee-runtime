@@ -151,14 +151,15 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
     };
 
     // Optimized: Zip `extracted` and `row_offsets` to avoid index bounds checks on `extracted[i]` and `row_offsets[i]`.
+    let dist_mat = &mut distance_matrix[..n * n];
     for (i, (&v_i, &row_i_start)) in extracted.iter().zip(row_offsets.iter()).enumerate() {
         let next_extracted = &extracted[(i + 1)..n];
         let next_offsets = &row_offsets[(i + 1)..n];
         let mut row_i_idx = row_i_start + i + 1;
         for (v_j, &offset_j) in next_extracted.iter().zip(next_offsets.iter()) {
             let dist = squared_l2_distance(v_i, v_j);
-            distance_matrix[row_i_idx] = dist;
-            distance_matrix[offset_j + i] = dist;
+            dist_mat[row_i_idx] = dist;
+            dist_mat[offset_j + i] = dist;
             row_i_idx += 1;
         }
     }
