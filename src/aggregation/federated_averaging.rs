@@ -172,10 +172,12 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
         for chunk_start in (0..len).step_by(CHUNK_SIZE) {
             let chunk_end = (chunk_start + CHUNK_SIZE).min(len);
             let chunk_len = chunk_end - chunk_start;
-            let acc_chunk = &mut acc_slice[chunk_start..chunk_end];
+            // Optimized: Hoist slice truncation and range bounds calculation of `acc_c`
+            // to a single definition per tile iteration outside the 4-way vector chunk loop
+            // and remainder match arms, completely eliminating redundant re-slicing operations.
+            let acc_c = &mut acc_slice[chunk_start..chunk_end][..chunk_len];
 
             for &chunk in vector_chunks {
-                let acc_c = &mut acc_chunk[..chunk_len];
                 let v0 = &chunk[0][chunk_start..chunk_end][..chunk_len];
                 let v1 = &chunk[1][chunk_start..chunk_end][..chunk_len];
                 let v2 = &chunk[2][chunk_start..chunk_end][..chunk_len];
@@ -191,7 +193,6 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                     // Convert remainder slice to fixed-size array reference `&[&[f32]; 3]` to statically
                     // elide runtime bounds checks on `rem[0]`, `rem[1]`, and `rem[2]`.
                     let rem: &[&[f32]; 3] = remainder.try_into().unwrap();
-                    let acc_c = &mut acc_chunk[..chunk_len];
                     let v0 = &rem[0][chunk_start..chunk_end][..chunk_len];
                     let v1 = &rem[1][chunk_start..chunk_end][..chunk_len];
                     let v2 = &rem[2][chunk_start..chunk_end][..chunk_len];
@@ -203,7 +204,6 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                     // Convert remainder slice to fixed-size array reference `&[&[f32]; 2]` to statically
                     // elide runtime bounds checks on `rem[0]` and `rem[1]`.
                     let rem: &[&[f32]; 2] = remainder.try_into().unwrap();
-                    let acc_c = &mut acc_chunk[..chunk_len];
                     let v0 = &rem[0][chunk_start..chunk_end][..chunk_len];
                     let v1 = &rem[1][chunk_start..chunk_end][..chunk_len];
                     for i in 0..chunk_len {
@@ -214,7 +214,6 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                     // Convert remainder slice to fixed-size array reference `&[&[f32]; 1]` to statically
                     // elide runtime bounds checks on `rem[0]`.
                     let rem: &[&[f32]; 1] = remainder.try_into().unwrap();
-                    let acc_c = &mut acc_chunk[..chunk_len];
                     let v0 = &rem[0][chunk_start..chunk_end][..chunk_len];
                     for i in 0..chunk_len {
                         acc_c[i] += v0[i];
@@ -223,9 +222,9 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                 _ => {}
             }
 
-            // Normalize `acc_chunk` immediately while it is warm in L1 cache.
+            // Normalize `acc_c` immediately while it is warm in L1 cache.
             // This eliminates a separate full memory pass over `acc_slice` after tiling.
-            for val in acc_chunk.iter_mut() {
+            for val in acc_c.iter_mut() {
                 *val *= inv_denom;
             }
         }
