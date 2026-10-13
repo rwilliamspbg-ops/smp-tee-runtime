@@ -186,44 +186,40 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                 }
             }
 
+            // Optimized: Fuse reciprocal normalization multiplication directly into the remainder
+            // match arms for loop-tiled high-dimensional vector accumulation.
+            // When remainder.len() is 1, 2, or 3, combining final vector addition with normalization
+            // eliminates an extra write-and-read memory pass over `acc_c`.
             match remainder.len() {
                 3 => {
-                    // Convert remainder slice to fixed-size array reference `&[&[f32]; 3]` to statically
-                    // elide runtime bounds checks on `rem[0]`, `rem[1]`, and `rem[2]`.
                     let rem: &[&[f32]; 3] = remainder.try_into().unwrap();
                     let v0 = &rem[0][chunk_start..chunk_end][..chunk_len];
                     let v1 = &rem[1][chunk_start..chunk_end][..chunk_len];
                     let v2 = &rem[2][chunk_start..chunk_end][..chunk_len];
                     for i in 0..chunk_len {
-                        acc_c[i] += (v0[i] + v1[i]) + v2[i];
+                        acc_c[i] = (acc_c[i] + (v0[i] + v1[i]) + v2[i]) * inv_denom;
                     }
                 }
                 2 => {
-                    // Convert remainder slice to fixed-size array reference `&[&[f32]; 2]` to statically
-                    // elide runtime bounds checks on `rem[0]` and `rem[1]`.
                     let rem: &[&[f32]; 2] = remainder.try_into().unwrap();
                     let v0 = &rem[0][chunk_start..chunk_end][..chunk_len];
                     let v1 = &rem[1][chunk_start..chunk_end][..chunk_len];
                     for i in 0..chunk_len {
-                        acc_c[i] += v0[i] + v1[i];
+                        acc_c[i] = (acc_c[i] + v0[i] + v1[i]) * inv_denom;
                     }
                 }
                 1 => {
-                    // Convert remainder slice to fixed-size array reference `&[&[f32]; 1]` to statically
-                    // elide runtime bounds checks on `rem[0]`.
                     let rem: &[&[f32]; 1] = remainder.try_into().unwrap();
                     let v0 = &rem[0][chunk_start..chunk_end][..chunk_len];
                     for i in 0..chunk_len {
-                        acc_c[i] += v0[i];
+                        acc_c[i] = (acc_c[i] + v0[i]) * inv_denom;
                     }
                 }
-                _ => {}
-            }
-
-            // Normalize `acc_c` immediately while it is warm in L1 cache.
-            // This eliminates a separate full memory pass over `acc_slice` after tiling.
-            for val in acc_c.iter_mut() {
-                *val *= inv_denom;
+                _ => {
+                    for val in acc_c.iter_mut() {
+                        *val *= inv_denom;
+                    }
+                }
             }
         }
         return Some(acc);
