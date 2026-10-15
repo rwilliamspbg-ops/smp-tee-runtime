@@ -155,6 +155,7 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
     // slice upper bounds and unify element bounds checks on `dist_mat[row_i_idx]` and `dist_mat[offset_j + i]`.
     let dist_mat = &mut distance_matrix[..n * n];
     // Optimized: Zip `extracted` and `row_offsets` to avoid index bounds checks on `extracted[i]` and `row_offsets[i]`.
+    let dist_mat = &mut distance_matrix[..n * n];
     for (i, (&v_i, &row_i_start)) in extracted.iter().zip(row_offsets.iter()).enumerate() {
         let next_extracted = &extracted[(i + 1)..n];
         let next_offsets = &row_offsets[(i + 1)..n];
@@ -189,8 +190,9 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
         // This breaks serial floating-point addition dependencies, allowing CPU execution units to process
         // floating-point additions concurrently in parallel and boosting candidate score calculation speed.
         let sub = &row[..=neighbors];
-        // Optimized: Fast path for small neighbor counts (sub.len() <= 3).
-        // Since `n >= 2f + 3`, `neighbors >= 1`, so `sub.len() = neighbors + 1 >= 2`.
+        // Optimized: Fast path for small-to-medium neighbor counts (sub.len() <= 8).
+        // Statically elides iterator creation, remainder match arms, and runtime bounds checks
+        // by pattern matching fixed-size array references (`&[f32; N]`) for neighbor counts up to 8.
         let score: f32 = match sub.len() {
             2 => {
                 let r: &[f32; 2] = sub.try_into().unwrap();
@@ -203,6 +205,22 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
             4 => {
                 let r: &[f32; 4] = sub.try_into().unwrap();
                 (r[0] + r[1]) + (r[2] + r[3])
+            }
+            5 => {
+                let r: &[f32; 5] = sub.try_into().unwrap();
+                ((r[0] + r[1]) + (r[2] + r[3])) + r[4]
+            }
+            6 => {
+                let r: &[f32; 6] = sub.try_into().unwrap();
+                ((r[0] + r[1]) + (r[2] + r[3])) + (r[4] + r[5])
+            }
+            7 => {
+                let r: &[f32; 7] = sub.try_into().unwrap();
+                ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + r[6])
+            }
+            8 => {
+                let r: &[f32; 8] = sub.try_into().unwrap();
+                ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]))
             }
             _ => {
                 // For sub.len() >= 4, sum using 4-way unrolling with 4 independent
@@ -279,5 +297,19 @@ mod tests {
 
         assert!(selected[0] < 2.0);
         assert!(selected[1] < 2.0);
+    }
+
+    #[test]
+    fn multi_krum_handles_various_neighbor_counts() {
+        // Exercises match arms for sub.len() = 5, 6, 7, 8 (N = 7, 8, 9, 10 with byzantine_tolerance = 1)
+        for n in 7..=10 {
+            let mut inputs = Vec::new();
+            for i in 0..n {
+                inputs.push(vec![1.0 + (i as f32) * 0.01, 2.0]);
+            }
+            let selected = multi_krum(&inputs, 1).unwrap();
+            assert_eq!(selected.len(), 2);
+            assert!(selected[0] < 2.0);
+        }
     }
 }
