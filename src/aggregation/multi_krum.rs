@@ -150,6 +150,10 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
         &heap_offsets
     };
 
+    // Optimized: Truncate `distance_matrix` to an explicit slice `dist_mat` of length `n * n`
+    // prior to entering the symmetric distance precomputation loop. This allows LLVM to statically prove
+    // slice upper bounds and unify element bounds checks on `dist_mat[row_i_idx]` and `dist_mat[offset_j + i]`.
+    let dist_mat = &mut distance_matrix[..n * n];
     // Optimized: Zip `extracted` and `row_offsets` to avoid index bounds checks on `extracted[i]` and `row_offsets[i]`.
     let dist_mat = &mut distance_matrix[..n * n];
     for (i, (&v_i, &row_i_start)) in extracted.iter().zip(row_offsets.iter()).enumerate() {
