@@ -167,13 +167,15 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
         let denom = extracted.len() as f32;
         let inv_denom = 1.0_f32 / denom;
 
-        for chunk_start in (0..len).step_by(CHUNK_SIZE) {
-            let chunk_end = (chunk_start + CHUNK_SIZE).min(len);
-            let chunk_len = chunk_end - chunk_start;
-            // Optimized: Hoist slice truncation and range bounds calculation of `acc_c`
-            // to a single definition per tile iteration outside the 4-way vector chunk loop
-            // and remainder match arms, completely eliminating redundant re-slicing operations.
-            let acc_c = &mut acc_slice[chunk_start..chunk_end][..chunk_len];
+        // Optimized: Zip step sequence with `acc_slice.chunks_mut(CHUNK_SIZE)` to directly yield
+        // accumulator chunk slices without range indexing bounds checks on `acc_slice`.
+        for (chunk_start, acc_c) in (0..len)
+            .step_by(CHUNK_SIZE)
+            .zip(acc_slice.chunks_mut(CHUNK_SIZE))
+        {
+            let chunk_len = acc_c.len();
+            let chunk_end = chunk_start + chunk_len;
+            let acc_c = &mut acc_c[..chunk_len];
 
             for &chunk in vector_chunks {
                 let v0 = &chunk[0][chunk_start..chunk_end][..chunk_len];
