@@ -189,9 +189,10 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
         // This breaks serial floating-point addition dependencies, allowing CPU execution units to process
         // floating-point additions concurrently in parallel and boosting candidate score calculation speed.
         let sub = &row[..=neighbors];
-        // Optimized: Fast path for small-to-medium neighbor counts (sub.len() <= 8).
+        // Optimized: Fast path for small-to-medium neighbor counts (sub.len() <= 16).
         // Statically elides iterator creation, remainder match arms, and runtime bounds checks
-        // by pattern matching fixed-size array references (`&[f32; N]`) for neighbor counts up to 8.
+        // by pattern matching fixed-size array references (`&[f32; N]`) for neighbor counts up to 16.
+        // Pairwise additions are parenthesized to maximize Instruction-Level Parallelism (ILP).
         let score: f32 = match sub.len() {
             2 => {
                 let r: &[f32; 2] = sub.try_into().unwrap();
@@ -220,6 +221,44 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
             8 => {
                 let r: &[f32; 8] = sub.try_into().unwrap();
                 ((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]))
+            }
+            9 => {
+                let r: &[f32; 9] = sub.try_into().unwrap();
+                (((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]))) + r[8]
+            }
+            10 => {
+                let r: &[f32; 10] = sub.try_into().unwrap();
+                (((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7]))) + (r[8] + r[9])
+            }
+            11 => {
+                let r: &[f32; 11] = sub.try_into().unwrap();
+                (((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7])))
+                    + ((r[8] + r[9]) + r[10])
+            }
+            12 => {
+                let r: &[f32; 12] = sub.try_into().unwrap();
+                (((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7])))
+                    + ((r[8] + r[9]) + (r[10] + r[11]))
+            }
+            13 => {
+                let r: &[f32; 13] = sub.try_into().unwrap();
+                (((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7])))
+                    + (((r[8] + r[9]) + (r[10] + r[11])) + r[12])
+            }
+            14 => {
+                let r: &[f32; 14] = sub.try_into().unwrap();
+                (((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7])))
+                    + (((r[8] + r[9]) + (r[10] + r[11])) + (r[12] + r[13]))
+            }
+            15 => {
+                let r: &[f32; 15] = sub.try_into().unwrap();
+                (((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7])))
+                    + (((r[8] + r[9]) + (r[10] + r[11])) + ((r[12] + r[13]) + r[14]))
+            }
+            16 => {
+                let r: &[f32; 16] = sub.try_into().unwrap();
+                (((r[0] + r[1]) + (r[2] + r[3])) + ((r[4] + r[5]) + (r[6] + r[7])))
+                    + (((r[8] + r[9]) + (r[10] + r[11])) + ((r[12] + r[13]) + (r[14] + r[15])))
             }
             _ => {
                 // For sub.len() >= 4, sum using 4-way unrolling with 4 independent
@@ -300,8 +339,8 @@ mod tests {
 
     #[test]
     fn multi_krum_handles_various_neighbor_counts() {
-        // Exercises match arms for sub.len() = 5, 6, 7, 8 (N = 7, 8, 9, 10 with byzantine_tolerance = 1)
-        for n in 7..=10 {
+        // Exercises match arms for sub.len() = 5 through 16 (N = 7 through 18 with byzantine_tolerance = 1)
+        for n in 7..=18 {
             let mut inputs = Vec::new();
             for i in 0..n {
                 inputs.push(vec![1.0 + (i as f32) * 0.01, 2.0]);
