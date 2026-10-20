@@ -70,6 +70,11 @@ fn squared_l2_distance(left: &[f32], right: &[f32]) -> f32 {
         (rem_l, rem_r)
     };
 
+    // Fast-path early return when rem2_l is empty to bypass match branch evaluation.
+    if rem2_l.is_empty() {
+        return sum;
+    }
+
     // Optimized: Match on remainder length using fixed-size array conversions
     // to eliminate iterator overhead and bounds checking branches.
     match rem2_l.len() {
@@ -89,7 +94,9 @@ fn squared_l2_distance(left: &[f32], right: &[f32]) -> f32 {
             sum += d0 * d0 + d1 * d1;
         }
         1 => {
-            let delta = rem2_l[0] - rem2_r[0];
+            let cl: &[f32; 1] = rem2_l.try_into().unwrap();
+            let cr: &[f32; 1] = rem2_r.try_into().unwrap();
+            let delta = cl[0] - cr[0];
             sum += delta * delta;
         }
         _ => {}
@@ -278,29 +285,31 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
                     sum2 += chunk[2];
                     sum3 += chunk[3];
                 }
-                match rem.len() {
-                    3 => {
-                        // Convert remainder slice to fixed-size array reference `&[f32; 3]` to statically
-                        // elide runtime bounds checks on `r[0]`, `r[1]`, and `r[2]`.
-                        let r: &[f32; 3] = rem.try_into().unwrap();
-                        sum0 += r[0];
-                        sum1 += r[1];
-                        sum2 += r[2];
+                if !rem.is_empty() {
+                    match rem.len() {
+                        3 => {
+                            // Convert remainder slice to fixed-size array reference `&[f32; 3]` to statically
+                            // elide runtime bounds checks on `r[0]`, `r[1]`, and `r[2]`.
+                            let r: &[f32; 3] = rem.try_into().unwrap();
+                            sum0 += r[0];
+                            sum1 += r[1];
+                            sum2 += r[2];
+                        }
+                        2 => {
+                            // Convert remainder slice to fixed-size array reference `&[f32; 2]` to statically
+                            // elide runtime bounds checks on `r[0]` and `r[1]`.
+                            let r: &[f32; 2] = rem.try_into().unwrap();
+                            sum0 += r[0];
+                            sum1 += r[1];
+                        }
+                        1 => {
+                            // Convert remainder slice to fixed-size array reference `&[f32; 1]` to statically
+                            // elide runtime bounds checks on `r[0]`.
+                            let r: &[f32; 1] = rem.try_into().unwrap();
+                            sum0 += r[0];
+                        }
+                        _ => {}
                     }
-                    2 => {
-                        // Convert remainder slice to fixed-size array reference `&[f32; 2]` to statically
-                        // elide runtime bounds checks on `r[0]` and `r[1]`.
-                        let r: &[f32; 2] = rem.try_into().unwrap();
-                        sum0 += r[0];
-                        sum1 += r[1];
-                    }
-                    1 => {
-                        // Convert remainder slice to fixed-size array reference `&[f32; 1]` to statically
-                        // elide runtime bounds checks on `r[0]`.
-                        let r: &[f32; 1] = rem.try_into().unwrap();
-                        sum0 += r[0];
-                    }
-                    _ => {}
                 }
                 (sum0 + sum1) + (sum2 + sum3)
             }
