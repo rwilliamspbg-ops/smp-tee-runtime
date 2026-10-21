@@ -120,7 +120,9 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                     let v0 = &rem[0][..len];
                     let v1 = &rem[1][..len];
                     for i in 0..len {
-                        acc_slice[i] = (acc_slice[i] + v0[i] + v1[i]) * inv_denom;
+                        // Group additions as `(acc_slice[i] + (v0[i] + v1[i])) * inv_denom`
+                        // to allow parallel execution of `v0 + v1` with `acc_slice[i]`.
+                        acc_slice[i] = (acc_slice[i] + (v0[i] + v1[i])) * inv_denom;
                     }
                 }
                 1 => {
@@ -207,7 +209,7 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                     let v0 = &rem[0][chunk_start..chunk_end][..chunk_len];
                     let v1 = &rem[1][chunk_start..chunk_end][..chunk_len];
                     for i in 0..chunk_len {
-                        acc_c[i] = (acc_c[i] + v0[i] + v1[i]) * inv_denom;
+                        acc_c[i] = (acc_c[i] + (v0[i] + v1[i])) * inv_denom;
                     }
                 }
                 1 => {
