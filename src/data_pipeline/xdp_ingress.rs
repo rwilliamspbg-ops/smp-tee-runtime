@@ -19,12 +19,7 @@ impl XdpIngress {
         // This avoids any extra reallocations and enables compiler optimizations on chunks.
         let chunks_exact = ring_bytes.chunks_exact(frame_size);
         let remainder = chunks_exact.remainder();
-        let num_chunks = chunks_exact.len();
 
-        // Optimized: Branch-free capacity planning using boolean cast `has_remainder as usize`.
-        // Calculating capacity without conditional branches avoids branch mispredictions on frame sizing,
-        // while pre-allocating exact vector capacity and utilizing `extend` over `chunks_exact.map(...)`
-        // yields a ~5% speedup on ring buffer packet parsing (~870 ns vs ~915 ns).
         if remainder.is_empty() {
             // Optimized: When remainder is empty, collect directly from `chunks_exact.map(...)`.
             // Because `ChunksExact` implements `ExactSizeIterator` / `TrustedLen`, `Vec::from_iter`
@@ -33,6 +28,7 @@ impl XdpIngress {
             return chunks_exact.map(|data| PacketView { data }).collect();
         }
 
+        let num_chunks = chunks_exact.len();
         let mut packets = Vec::with_capacity(num_chunks + 1);
         packets.extend(chunks_exact.map(|data| PacketView { data }));
         packets.push(PacketView { data: remainder });

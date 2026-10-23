@@ -2,6 +2,10 @@
 
 ⚡ Performance-obsessed optimizations, learnings, and insights.
 
+## 2026-07-06 - [Deferred Chunks Exact Length Calculation in Ring Buffer Parsing]
+**Learning:** In ring buffer packet parsing (`XdpIngress::parse_ring_buffer`), computing `let num_chunks = chunks_exact.len()` prior to checking `if remainder.is_empty()` forces a dynamic x86_64 integer division (`/ frame_size`) on every call. When `remainder.is_empty()` is true (the common fast path for aligned ring buffers), `num_chunks` is never used. Deferring `num_chunks` calculation to the fallback path after `if remainder.is_empty()` completely bypasses dynamic integer division on the fast path, yielding a ~14% latency improvement on ring buffer packet parsing (~896 ns vs ~1034 ns).
+**Action:** When computing slice or iterator properties that involve non-trivial arithmetic (like dynamic division in `ChunksExact::len`), defer the calculation until after early return fast-path guards when the value is unused on those guards.
+
 ## 2026-07-05 - [Elimination of Redundant Pre-Branch in Multi-Krum Candidate Score Summation]
 **Learning:** In Multi-Krum candidate score fallback summation over `sub.chunks_exact(4)`, wrapping `match rem.len()` inside an explicit `if !rem.is_empty()` check evaluates `rem.len() != 0` prior to match dispatch. Since `match rem.len()` already includes a wildcard `_ => {}` arm that handles remainder length `0`, removing the redundant `if !rem.is_empty()` check eliminates an extra branch evaluation on every candidate row, improving jump-table/match dispatch efficiency and yielding a ~3.1% speedup on 50-client Multi-Krum aggregation (`multi_krum_large_50_clients`).
 **Action:** When matching on collection/slice lengths with a wildcard `_` fallback arm, omit pre-checking `.is_empty()` to avoid redundant conditional branch checks prior to match dispatch.
