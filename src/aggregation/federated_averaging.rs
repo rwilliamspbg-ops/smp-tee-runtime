@@ -76,7 +76,9 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                     let v1 = &rem[1][..len];
                     let v2 = &rem[2][..len];
                     for i in 0..len {
-                        acc_c[i] += (v0[i] + v1[i]) + v2[i];
+                        // Group additions as `(acc_c[i] + v2[i]) + (v0[i] + v1[i])` to allow `v0 + v1`
+                        // to be computed in parallel with `acc_c + v2`, reducing instruction dependency chain latency.
+                        acc_c[i] = (acc_c[i] + v2[i]) + (v0[i] + v1[i]);
                     }
                 }
                 2 => {
@@ -112,7 +114,9 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                     let v1 = &rem[1][..len];
                     let v2 = &rem[2][..len];
                     for i in 0..len {
-                        acc_slice[i] = (acc_slice[i] + (v0[i] + v1[i]) + v2[i]) * inv_denom;
+                        // Group additions as `((acc_slice[i] + v2[i]) + (v0[i] + v1[i])) * inv_denom`
+                        // to allow `v0 + v1` to be computed in parallel with `acc_slice + v2`.
+                        acc_slice[i] = ((acc_slice[i] + v2[i]) + (v0[i] + v1[i])) * inv_denom;
                     }
                 }
                 2 => {
@@ -201,7 +205,9 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                     let v1 = &rem[1][chunk_start..chunk_end][..chunk_len];
                     let v2 = &rem[2][chunk_start..chunk_end][..chunk_len];
                     for i in 0..chunk_len {
-                        acc_c[i] = (acc_c[i] + (v0[i] + v1[i]) + v2[i]) * inv_denom;
+                        // Group additions as `((acc_c[i] + v2[i]) + (v0[i] + v1[i])) * inv_denom`
+                        // to allow `v0 + v1` to be computed in parallel with `acc_c + v2`.
+                        acc_c[i] = ((acc_c[i] + v2[i]) + (v0[i] + v1[i])) * inv_denom;
                     }
                 }
                 2 => {
