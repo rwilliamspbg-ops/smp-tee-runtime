@@ -10,7 +10,9 @@ pub struct XdpIngress;
 
 impl XdpIngress {
     pub fn parse_ring_buffer<'a>(ring_bytes: &'a [u8], frame_size: usize) -> Vec<PacketView<'a>> {
-        if frame_size == 0 {
+        // Optimized: Early exit for zero frame size or empty input buffer to avoid
+        // `ChunksExact` iterator creation and remainder slice calculation.
+        if frame_size == 0 || ring_bytes.is_empty() {
             return Vec::new();
         }
 
@@ -60,6 +62,13 @@ mod tests {
         assert_eq!(packets.len(), 3);
         assert_eq!(packets[0].data, &[1, 2]);
         assert_eq!(packets[2].data, &[5, 6]);
+    }
+
+    #[test]
+    fn ring_buffer_parsing_handles_empty_inputs() {
+        let empty_ring: [u8; 0] = [];
+        assert!(XdpIngress::parse_ring_buffer(&empty_ring, 64).is_empty());
+        assert!(XdpIngress::parse_ring_buffer(&[1, 2, 3], 0).is_empty());
     }
 
     #[test]
