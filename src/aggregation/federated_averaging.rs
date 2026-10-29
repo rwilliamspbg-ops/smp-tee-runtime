@@ -46,6 +46,9 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
 
     if len <= 1024 {
         // Fast path for small dimensions: direct iteration to avoid chunking and branch overhead.
+        let denom = extracted.len() as f32;
+        let inv_denom = 1.0_f32 / denom;
+
         if remaining_vectors.len() >= 4 {
             // Optimized: Process remaining vectors in chunks of 4.
             // Hoist destination accumulator slice truncation outside of the vector chunk loop and
@@ -53,55 +56,70 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
             let acc_c = &mut acc_slice[..len];
             let chunks = remaining_vectors.chunks_exact(4);
             let remainder = chunks.remainder();
-            for chunk in chunks {
-                let chunk: &[&[f32]; 4] = chunk.try_into().unwrap();
-                let v0 = &chunk[0][..len];
-                let v1 = &chunk[1][..len];
-                let v2 = &chunk[2][..len];
-                let v3 = &chunk[3][..len];
-                for i in 0..len {
-                    // Optimized: Group additions as `(v0[i] + v1[i]) + (v2[i] + v3[i])` to reduce
-                    // instruction dependency chain latency from 4 sequential additions to 3.
-                    // This allows the CPU's execution units to compute `v0 + v1` and `v2 + v3` in parallel,
-                    // maximizing Instruction-Level Parallelism (ILP).
-                    acc_c[i] += (v0[i] + v1[i]) + (v2[i] + v3[i]);
+
+            if remainder.is_empty() {
+                let num_chunks = chunks.len();
+                for chunk in remaining_vectors.chunks_exact(4).take(num_chunks - 1) {
+                    let chunk: &[&[f32]; 4] = chunk.try_into().unwrap();
+                    let v0 = &chunk[0][..len];
+                    let v1 = &chunk[1][..len];
+                    let v2 = &chunk[2][..len];
+                    let v3 = &chunk[3][..len];
+                    for i in 0..len {
+                        acc_c[i] += (v0[i] + v1[i]) + (v2[i] + v3[i]);
+                    }
+                }
+                if let Some(last_chunk) = remaining_vectors.chunks_exact(4).last() {
+                    let chunk: &[&[f32]; 4] = last_chunk.try_into().unwrap();
+                    let v0 = &chunk[0][..len];
+                    let v1 = &chunk[1][..len];
+                    let v2 = &chunk[2][..len];
+                    let v3 = &chunk[3][..len];
+                    for i in 0..len {
+                        // Fuse addition and normalization into a single pass on the last chunk.
+                        acc_c[i] = (acc_c[i] + ((v0[i] + v1[i]) + (v2[i] + v3[i]))) * inv_denom;
+                    }
+                }
+            } else {
+                for chunk in chunks {
+                    let chunk: &[&[f32]; 4] = chunk.try_into().unwrap();
+                    let v0 = &chunk[0][..len];
+                    let v1 = &chunk[1][..len];
+                    let v2 = &chunk[2][..len];
+                    let v3 = &chunk[3][..len];
+                    for i in 0..len {
+                        acc_c[i] += (v0[i] + v1[i]) + (v2[i] + v3[i]);
+                    }
+                }
+                match remainder.len() {
+                    3 => {
+                        let rem: &[&[f32]; 3] = remainder.try_into().unwrap();
+                        let v0 = &rem[0][..len];
+                        let v1 = &rem[1][..len];
+                        let v2 = &rem[2][..len];
+                        for i in 0..len {
+                            acc_c[i] = ((acc_c[i] + v2[i]) + (v0[i] + v1[i])) * inv_denom;
+                        }
+                    }
+                    2 => {
+                        let rem: &[&[f32]; 2] = remainder.try_into().unwrap();
+                        let v0 = &rem[0][..len];
+                        let v1 = &rem[1][..len];
+                        for i in 0..len {
+                            acc_c[i] = (acc_c[i] + (v0[i] + v1[i])) * inv_denom;
+                        }
+                    }
+                    1 => {
+                        let rem: &[&[f32]; 1] = remainder.try_into().unwrap();
+                        let v0 = &rem[0][..len];
+                        for i in 0..len {
+                            acc_c[i] = (acc_c[i] + v0[i]) * inv_denom;
+                        }
+                    }
+                    _ => {}
                 }
             }
-            match remainder.len() {
-                3 => {
-                    // Convert remainder slice to fixed-size array reference `&[&[f32]; 3]` to statically
-                    // elide runtime bounds checks on `rem[0]`, `rem[1]`, and `rem[2]`.
-                    let rem: &[&[f32]; 3] = remainder.try_into().unwrap();
-                    let v0 = &rem[0][..len];
-                    let v1 = &rem[1][..len];
-                    let v2 = &rem[2][..len];
-                    for i in 0..len {
-                        // Group additions as `(acc_c[i] + v2[i]) + (v0[i] + v1[i])` to allow `v0 + v1`
-                        // to be computed in parallel with `acc_c + v2`, reducing instruction dependency chain latency.
-                        acc_c[i] = (acc_c[i] + v2[i]) + (v0[i] + v1[i]);
-                    }
-                }
-                2 => {
-                    // Convert remainder slice to fixed-size array reference `&[&[f32]; 2]` to statically
-                    // elide runtime bounds checks on `rem[0]` and `rem[1]`.
-                    let rem: &[&[f32]; 2] = remainder.try_into().unwrap();
-                    let v0 = &rem[0][..len];
-                    let v1 = &rem[1][..len];
-                    for i in 0..len {
-                        acc_c[i] += v0[i] + v1[i];
-                    }
-                }
-                1 => {
-                    // Convert remainder slice to fixed-size array reference `&[&[f32]; 1]` to statically
-                    // elide runtime bounds checks on `rem[0]`.
-                    let rem: &[&[f32]; 1] = remainder.try_into().unwrap();
-                    let v0 = &rem[0][..len];
-                    for i in 0..len {
-                        acc_c[i] += v0[i];
-                    }
-                }
-                _ => {}
-            }
+            Some(acc)
         } else {
             // Optimized: Fuse addition and normalization into a single pass when remaining_vectors.len() < 4.
             // This avoids a second pass over memory (`acc_slice`) for normalization.
@@ -142,7 +160,7 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                     }
                 }
             }
-            return Some(acc);
+            Some(acc)
         }
     } else {
         // Loop tiling/blocking for large dimensions: accumulate in small chunks (e.g., 1024 elements)
@@ -183,64 +201,68 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
             let chunk_end = chunk_start + chunk_len;
             let acc_c = &mut acc_c[..chunk_len];
 
-            for &chunk in vector_chunks {
-                let v0 = &chunk[0][chunk_start..chunk_end][..chunk_len];
-                let v1 = &chunk[1][chunk_start..chunk_end][..chunk_len];
-                let v2 = &chunk[2][chunk_start..chunk_end][..chunk_len];
-                let v3 = &chunk[3][chunk_start..chunk_end][..chunk_len];
-                for i in 0..chunk_len {
-                    // Group additions as `(v0[i] + v1[i]) + (v2[i] + v3[i])` to minimize instruction latency.
-                    acc_c[i] += (v0[i] + v1[i]) + (v2[i] + v3[i]);
-                }
-            }
-
-            // Optimized: Fuse reciprocal normalization multiplication directly into the remainder
-            // match arms for loop-tiled high-dimensional vector accumulation.
-            // When remainder.len() is 1, 2, or 3, combining final vector addition with normalization
-            // eliminates an extra write-and-read memory pass over `acc_c`.
-            match remainder.len() {
-                3 => {
-                    let rem: &[&[f32]; 3] = remainder.try_into().unwrap();
-                    let v0 = &rem[0][chunk_start..chunk_end][..chunk_len];
-                    let v1 = &rem[1][chunk_start..chunk_end][..chunk_len];
-                    let v2 = &rem[2][chunk_start..chunk_end][..chunk_len];
+            if remainder.is_empty() {
+                if let Some((last_chunk, main_chunks)) = vector_chunks.split_last() {
+                    for &chunk in main_chunks {
+                        let v0 = &chunk[0][chunk_start..chunk_end][..chunk_len];
+                        let v1 = &chunk[1][chunk_start..chunk_end][..chunk_len];
+                        let v2 = &chunk[2][chunk_start..chunk_end][..chunk_len];
+                        let v3 = &chunk[3][chunk_start..chunk_end][..chunk_len];
+                        for i in 0..chunk_len {
+                            acc_c[i] += (v0[i] + v1[i]) + (v2[i] + v3[i]);
+                        }
+                    }
+                    let chunk = *last_chunk;
+                    let v0 = &chunk[0][chunk_start..chunk_end][..chunk_len];
+                    let v1 = &chunk[1][chunk_start..chunk_end][..chunk_len];
+                    let v2 = &chunk[2][chunk_start..chunk_end][..chunk_len];
+                    let v3 = &chunk[3][chunk_start..chunk_end][..chunk_len];
                     for i in 0..chunk_len {
-                        // Group additions as `((acc_c[i] + v2[i]) + (v0[i] + v1[i])) * inv_denom`
-                        // to allow `v0 + v1` to be computed in parallel with `acc_c + v2`.
-                        acc_c[i] = ((acc_c[i] + v2[i]) + (v0[i] + v1[i])) * inv_denom;
+                        // Fuse addition and normalization into a single pass on the last chunk.
+                        acc_c[i] = (acc_c[i] + ((v0[i] + v1[i]) + (v2[i] + v3[i]))) * inv_denom;
                     }
                 }
-                2 => {
-                    let rem: &[&[f32]; 2] = remainder.try_into().unwrap();
-                    let v0 = &rem[0][chunk_start..chunk_end][..chunk_len];
-                    let v1 = &rem[1][chunk_start..chunk_end][..chunk_len];
+            } else {
+                for &chunk in vector_chunks {
+                    let v0 = &chunk[0][chunk_start..chunk_end][..chunk_len];
+                    let v1 = &chunk[1][chunk_start..chunk_end][..chunk_len];
+                    let v2 = &chunk[2][chunk_start..chunk_end][..chunk_len];
+                    let v3 = &chunk[3][chunk_start..chunk_end][..chunk_len];
                     for i in 0..chunk_len {
-                        acc_c[i] = (acc_c[i] + (v0[i] + v1[i])) * inv_denom;
+                        acc_c[i] += (v0[i] + v1[i]) + (v2[i] + v3[i]);
                     }
                 }
-                1 => {
-                    let rem: &[&[f32]; 1] = remainder.try_into().unwrap();
-                    let v0 = &rem[0][chunk_start..chunk_end][..chunk_len];
-                    for i in 0..chunk_len {
-                        acc_c[i] = (acc_c[i] + v0[i]) * inv_denom;
+                match remainder.len() {
+                    3 => {
+                        let rem: &[&[f32]; 3] = remainder.try_into().unwrap();
+                        let v0 = &rem[0][chunk_start..chunk_end][..chunk_len];
+                        let v1 = &rem[1][chunk_start..chunk_end][..chunk_len];
+                        let v2 = &rem[2][chunk_start..chunk_end][..chunk_len];
+                        for i in 0..chunk_len {
+                            acc_c[i] = ((acc_c[i] + v2[i]) + (v0[i] + v1[i])) * inv_denom;
+                        }
                     }
-                }
-                _ => {
-                    for val in acc_c.iter_mut() {
-                        *val *= inv_denom;
+                    2 => {
+                        let rem: &[&[f32]; 2] = remainder.try_into().unwrap();
+                        let v0 = &rem[0][chunk_start..chunk_end][..chunk_len];
+                        let v1 = &rem[1][chunk_start..chunk_end][..chunk_len];
+                        for i in 0..chunk_len {
+                            acc_c[i] = (acc_c[i] + (v0[i] + v1[i])) * inv_denom;
+                        }
                     }
+                    1 => {
+                        let rem: &[&[f32]; 1] = remainder.try_into().unwrap();
+                        let v0 = &rem[0][chunk_start..chunk_end][..chunk_len];
+                        for i in 0..chunk_len {
+                            acc_c[i] = (acc_c[i] + v0[i]) * inv_denom;
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
-        return Some(acc);
+        Some(acc)
     }
-
-    let denom = extracted.len() as f32;
-    let inv_denom = 1.0_f32 / denom;
-    for val in acc_slice.iter_mut() {
-        *val *= inv_denom;
-    }
-    Some(acc)
 }
 
 #[cfg(test)]
