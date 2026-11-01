@@ -141,37 +141,25 @@ pub fn multi_krum<V: AsRef<[f32]>>(vectors: &[V], byzantine_tolerance: usize) ->
     // Precompute symmetric pairwise distances to reduce distance calculation count by 50%
     let mut distance_matrix = vec![0.0_f32; n * n];
 
-    // Optimized: Precalculate row offsets of the flat 1D matrix layout to avoid
-    // redundant multiplication operations `j * n` inside the hot inner loop.
-    // For small workloads (up to 64 clients), references are stored in a stack-allocated array
-    // to bypass heap allocation, only falling back to a heap-allocated Vec for larger lists.
-    let mut stack_offsets = [0; 64];
-    let heap_offsets: Vec<usize>;
-    let row_offsets: &[usize] = if n <= 64 {
-        for (r, offset) in stack_offsets[..n].iter_mut().enumerate() {
-            *offset = r * n;
-        }
-        &stack_offsets[..n]
-    } else {
-        heap_offsets = (0..n).map(|r| r * n).collect();
-        &heap_offsets
-    };
-
     // Optimized: Truncate `distance_matrix` to an explicit slice `dist_mat` of length `n * n`
     // prior to entering the symmetric distance precomputation loop. This allows LLVM to statically prove
-    // slice upper bounds and unify element bounds checks on `dist_mat[row_i_idx]` and `dist_mat[offset_j + i]`.
-    // Zip `extracted` and `row_offsets` to avoid index bounds checks on `extracted[i]` and `row_offsets[i]`.
+    // slice upper bounds and unify element bounds checks on `dist_mat[row_i_idx]` and `dist_mat[col_i_idx]`.
+    // We maintain `row_i_start`, `row_i_idx`, and `col_i_idx` incrementally via addition (`row_i_idx += 1`,
+    // `col_i_idx += n`), completely eliminating row offset array precomputation and memory lookups.
     let dist_mat = &mut distance_matrix[..n * n];
-    for (i, (&v_i, &row_i_start)) in extracted.iter().zip(row_offsets.iter()).enumerate() {
+    let mut row_i_start = 0;
+    for (i, &v_i) in extracted.iter().enumerate() {
         let next_extracted = &extracted[(i + 1)..n];
-        let next_offsets = &row_offsets[(i + 1)..n];
         let mut row_i_idx = row_i_start + i + 1;
-        for (v_j, &offset_j) in next_extracted.iter().zip(next_offsets.iter()) {
+        let mut col_i_idx = row_i_start + n + i;
+        for &v_j in next_extracted {
             let dist = squared_l2_distance(v_i, v_j);
             dist_mat[row_i_idx] = dist;
-            dist_mat[offset_j + i] = dist;
+            dist_mat[col_i_idx] = dist;
             row_i_idx += 1;
+            col_i_idx += n;
         }
+        row_i_start += n;
     }
 
     // Optimized: Replace `Option<(usize, f32)>` tuple matching with primitive scalar tracking
