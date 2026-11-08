@@ -58,8 +58,13 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
             let remainder = chunks.remainder();
 
             if remainder.is_empty() {
-                let num_chunks = chunks.len();
-                for chunk in remaining_vectors.chunks_exact(4).take(num_chunks - 1) {
+                // Optimized: When remainder is empty, remaining_vectors divides evenly into 4-element chunks.
+                // Split the slice directly into main_chunks and last_chunk via `split_at`.
+                // This eliminates creating multiple `ChunksExact` iterators, `.take(num_chunks - 1)`,
+                // and `.last()` traversal across the client vector references.
+                let split_idx = remaining_vectors.len() - 4;
+                let (main_slice, last_chunk_slice) = remaining_vectors.split_at(split_idx);
+                for chunk in main_slice.chunks_exact(4) {
                     let chunk: &[&[f32]; 4] = chunk.try_into().unwrap();
                     let v0 = &chunk[0][..len];
                     let v1 = &chunk[1][..len];
@@ -69,16 +74,14 @@ pub fn federated_averaging<V: AsRef<[f32]>>(vectors: &[V]) -> Option<Vec<f32>> {
                         acc_c[i] += (v0[i] + v1[i]) + (v2[i] + v3[i]);
                     }
                 }
-                if let Some(last_chunk) = remaining_vectors.chunks_exact(4).last() {
-                    let chunk: &[&[f32]; 4] = last_chunk.try_into().unwrap();
-                    let v0 = &chunk[0][..len];
-                    let v1 = &chunk[1][..len];
-                    let v2 = &chunk[2][..len];
-                    let v3 = &chunk[3][..len];
-                    for i in 0..len {
-                        // Fuse addition and normalization into a single pass on the last chunk.
-                        acc_c[i] = (acc_c[i] + ((v0[i] + v1[i]) + (v2[i] + v3[i]))) * inv_denom;
-                    }
+                let chunk: &[&[f32]; 4] = last_chunk_slice.try_into().unwrap();
+                let v0 = &chunk[0][..len];
+                let v1 = &chunk[1][..len];
+                let v2 = &chunk[2][..len];
+                let v3 = &chunk[3][..len];
+                for i in 0..len {
+                    // Fuse addition and normalization into a single pass on the last chunk.
+                    acc_c[i] = (acc_c[i] + ((v0[i] + v1[i]) + (v2[i] + v3[i]))) * inv_denom;
                 }
             } else {
                 for chunk in chunks {
